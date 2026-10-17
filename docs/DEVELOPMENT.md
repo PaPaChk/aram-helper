@@ -1,0 +1,83 @@
+# 开发与发版
+
+## 目录
+
+```
+lolhex/
+  __main__.py          入口（python -m lolhex）
+  engine.py            调度：窗口状态、选人识别、三选一识别、推荐
+  config.py            配置文件和目录（安装版 %APPDATA%\AramHex，便携版 程序目录\userdata）
+  update.py            程序更新：查 GitHub Releases 有没有新版本（连不上时查 jsDelivr）
+  patch.py             增量更新：只下载变了的文件（updates 分支，GitHub / jsDelivr），退出后替换，失败还原
+  recommend.py         三选一评分
+  panel.py             单英雄面板（胜率、出装、加点、海克斯表）
+  data/
+    store.py           腾讯官方资料（运行时获取，落盘缓存）
+    public.py          自采统计数据：内置 + 从数据仓库下载更新，逐文件校验 SHA-256；分数段切换
+    tencent.py         腾讯接口和解析
+    bundled/           内置统计数据（scripts/update_data.py 生成，不要手改）
+  vision/              截屏、选人界面识别、三选一识别、OCR
+  ui/                  主窗口、托盘、游戏内浮窗
+scripts/update_data.py 把数据仓库最新的一份放进 lolhex/data/bundled/
+packaging/             PyInstaller、Inno Setup、打包脚本
+```
+
+## 原则
+
+- **不接入客户端（LCU）、不读内存、不注入、不模拟按键或鼠标**。只截屏识别、显示数据。
+  - 浮窗点完以后把前台还给游戏，只调用 `SetForegroundWindow`，不发任何输入。
+  - 游戏内 2999 接口是 Riot 官方的只读接口，默认关闭。
+- 统计数据只用数据仓库的公开格式，见 `lolhex/data/public.py` 顶部说明。改格式要升 `schema_version`，并且两个仓库一起改。
+- 网络失败不能影响使用：官方资料用上次的缓存，统计数据用内置的那份，检查更新失败时不打扰用户。
+
+## 测试
+
+```powershell
+$env:QT_QPA_PLATFORM = 'offscreen'
+.venv\Scripts\python -m pytest
+```
+
+测试不联网（`conftest.py` 的 `no_network`）。需要 HTTP 的测试在本机起临时服务。
+
+## 打包
+
+需要 Inno Setup 6（`winget install --id JRSoftware.InnoSetup -e`）：
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements-build.txt
+.venv\Scripts\python scripts\update_data.py          # 更新内置数据
+pwsh -NoProfile -File packaging\build.ps1
+```
+
+输出在 `build/release/`：
+- `AramHex-Setup-<版本>.exe`
+- `AramHex-Portable-<版本>.zip`
+- `SHA256SUMS.txt`
+
+打包时会先校验内置数据，再用真实的 Windows 窗口插件跑一遍 Qt 自检，自检不过不生成安装包。
+
+## 发版
+
+1. 更新内置数据：`python scripts/update_data.py`，然后提交。
+2. 改 `lolhex/__init__.py` 的 `__version__`，在 `CHANGELOG.md` 写这一版的说明。
+   - 说明是写给玩家看的（发布页和软件里的「有新版本」提示都显示它）：一两句大白话，只写更新了什么、修了什么问题，比如「更新时能看到下载进度了」「修复：……」。不写技术细节、文件名、数字口径。
+3. 提交，然后打 tag 并推送：`git tag v1.2.3 && git push origin v1.2.3`。
+4. GitHub Actions（`.github/workflows/release.yml`）自动完成：
+   - 跑测试、打包；
+   - 核对 tag 和 `__version__` 一致；
+   - 把增量更新的清单和文件（另有 .gz 压缩版，jsDelivr 不给下 .exe）推到 `updates` 分支，并打 tag `updates-v<版本>`（先于建 Release）；
+   - 建 Release，上传安装版、便携版和 `SHA256SUMS.txt`；
+   - Release 说明取 `CHANGELOG.md` 里这一版的内容。
+5. 已安装的助手启动时、再次打开时、每 30 分钟查一次 Releases 的 latest，有新版本就提示。
+
+只更新统计数据、不改程序时，不用发版：数据仓库更新后，助手会自己下载新数据。
+定期发版只是为了让新下载的用户拿到较新的内置数据。
+
+## 国内连不上 GitHub 时
+
+- jsDelivr 按分支名（`@main`、`@updates`）取文件会缓存好几个小时，刷新也不一定生效；按 tag 取是即时的。所以：
+  - 程序：发版打 tag `updates-v<版本>`；助手按"下一个版本号"（补丁、次版本、主版本各加 1）试探这个 tag 是否存在，找到后从 tag 下载增量更新。
+  - 统计数据：数据仓库每次更新打 tag `data-v<序号>`（`latest.json` 的 `seq`）；助手按"下一个序号"试探。
+- jsDelivr 单个文件不能超过 20MB，整个分支或 tag 不能超过 150MB；`.exe` 文件会被拒绝（403），所以增量更新文件都另存一份 `.gz`。
+- 完整安装包（86MB）放不进 jsDelivr，只能从 GitHub 下载，或者手动下载。
