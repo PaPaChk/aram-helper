@@ -1,55 +1,55 @@
-; 海克斯大乱斗助手安装包。先运行 packaging/build.ps1（它会调用本脚本）。
+; 海克斯大亂鬥助手安裝包。先執行 packaging/build.ps1（它會呼叫本指令碼）。
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 
 [Setup]
 AppId={{1107079E-6C48-46FD-938D-04B1C3EA9A72}
-AppName=AramHex 海克斯大乱斗助手
+AppName=AramHex 臺服版
 AppVersion={#AppVersion}
 AppPublisher=czgreat
 AppPublisherURL=https://github.com/czgreat/aramhex
 AppSupportURL=https://github.com/czgreat/aramhex/issues
 AppUpdatesURL=https://github.com/czgreat/aramhex/releases
-DefaultDirName={localappdata}\Programs\AramHex
-DefaultGroupName=海克斯大乱斗助手
-; 装到用户目录，不需要管理员权限；始终"只为当前用户安装"（卸载信息写在 HKCU），在线更新才能改「应用」列表里的版本号
+DefaultDirName={localappdata}\Programs\AramHexTW
+DefaultGroupName=AramHex 臺服版
+; 裝到使用者目錄，不需要管理員許可權；始終"只為當前使用者安裝"（解除安裝資訊寫在 HKCU），線上更新才能改「應用」列表裡的版本號
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=force
 OutputDir=..\build\installer
-OutputBaseFilename=AramHex-Setup-{#AppVersion}
+OutputBaseFilename=AramHexTW-Setup-{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayName=海克斯大乱斗助手
-UninstallDisplayIcon={app}\AramHex.exe
+UninstallDisplayName=AramHex 臺服版
+UninstallDisplayIcon={app}\AramHexTW.exe
 SetupIconFile=lolhex.ico
 LicenseFile=..\LICENSE
 
 [Languages]
-Name: "chs"; MessagesFile: "ChineseSimplified.isl"
+Name: "cht"; MessagesFile: "ChineseTraditional.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："
+Name: "desktopicon"; Description: "建立桌面快捷方式"; GroupDescription: "附加任務："
 
 [Files]
-Source: "..\build\dist\AramHex\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\dist\AramHexTW\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-; 升级时先清掉旧的程序文件（onedir 目录合并安装，否则旧版本多出来的文件会留下）
+; 升級時先清掉舊的程式檔案（onedir 目錄合併安裝，否則舊版本多出來的檔案會留下）
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Icons]
-Name: "{group}\海克斯大乱斗助手"; Filename: "{app}\AramHex.exe"
-Name: "{group}\卸载海克斯大乱斗助手"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\海克斯大乱斗助手"; Filename: "{app}\AramHex.exe"; Tasks: desktopicon
+Name: "{group}\AramHex 臺服版"; Filename: "{app}\AramHexTW.exe"
+Name: "{group}\解除安裝海克斯大亂鬥助手"; Filename: "{uninstallexe}"
+Name: "{userdesktop}\AramHex 臺服版"; Filename: "{app}\AramHexTW.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\AramHex.exe"; Description: "立即启动"; Flags: nowait postinstall skipifsilent
-; 助手里点「立即更新」走的是 /SILENT：装完自动重新打开
-Filename: "{app}\AramHex.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\AramHexTW.exe"; Description: "立即啟動"; Flags: nowait postinstall skipifsilent
+; 助手裡點「立即更新」走的是 /SILENT：裝完自動重新開啟
+Filename: "{app}\AramHexTW.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/c taskkill /im AramHex.exe /f"; Flags: runhidden; RunOnceId: "KillAramHex"
+Filename: "{cmd}"; Parameters: "/c taskkill /im AramHexTW.exe /f"; Flags: runhidden; RunOnceId: "KillAramHex"

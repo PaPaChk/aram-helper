@@ -1,8 +1,8 @@
-"""主界面与系统托盘。
+"""主介面與系統托盤。
 
-- 主窗口：数据状态、当前英雄（识别结果/候选/搜索手动选）、英雄评级与出装加点、当前三选一推荐、设置。
-- 关闭主窗口只是隐藏到托盘；退出要在托盘菜单里点「退出」。
-- 托盘：双击打开主界面；右键菜单。
+- 主視窗：資料狀態、當前英雄（識別結果/候選/搜尋手動選）、英雄評級與出裝加點、當前三選一推薦、設定。
+- 關閉主視窗只是隱藏到托盤；退出要在托盤選單裡點「退出」。
+- 托盤：雙擊開啟主介面；右鍵選單。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout, 
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar, QScrollArea,
                                QPushButton, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget)
 
-from .. import DATA_HOMEPAGE, HELP_PAGE, HOMEPAGE, WEBSITE, __version__, cloud, patch, rank, update
+from .. import APP_UPDATES_ENABLED, DATA_HOMEPAGE, HELP_PAGE, HOMEPAGE, WEBSITE, __version__, cloud, patch, rank, update
 from ..config import SPEEDS, is_portable
 from ..vision import window as win
 from ..data.public import BANDS
@@ -29,12 +29,12 @@ from . import buildview
 from .data_status import data_status_html
 from .herosearch import hero_completer
 
-RARITY_CN = {"silver": "白银", "gold": "黄金", "prismatic": "棱彩"}
-VERDICT_CN = {"best": ("首选", "#2e9d5b"), "ok": ("可选", "#3b7dd8"), "reroll": ("可考虑刷新", "#d0533f"),
+RARITY_CN = {"silver": "白銀", "gold": "黃金", "prismatic": "稜彩"}
+VERDICT_CN = {"best": ("首選", "#2e9d5b"), "ok": ("可選", "#3b7dd8"), "reroll": ("可考慮重新整理", "#d0533f"),
               "unknown": ("未知", "#888")}
-PHASE_CN = {None: "未检测到英雄联盟", "client": "客户端（选英雄界面会自动识别英雄）", "ingame": "对局中"}
-VISION_CN = {"idle": "待机", "paused": "游戏不在前台，暂停", "scanning": "扫描中"}
-UPDATE_EVERY_MS = 30 * 60 * 1000  # 常驻时多久查一次更新
+PHASE_CN = {None: "未檢測到英雄聯盟", "client": "客戶端（選英雄介面會自動識別英雄）", "ingame": "對局中"}
+VISION_CN = {"idle": "待機", "paused": "遊戲不在前臺，暫停", "scanning": "掃描中"}
+UPDATE_EVERY_MS = 30 * 60 * 1000  # 常駐時多久查一次更新
 
 
 def app_icon() -> QIcon:
@@ -57,7 +57,7 @@ def _progress_bar() -> QProgressBar:
 
 
 def show_progress(bar: QProgressBar, label: str, done: int | None = None, total: int | None = None) -> None:
-    """进度条上写"<在做什么> 已下载 / 总共 MB"；不知道总量时只写文字。"""
+    """進度條上寫"<在做什麼> 已下載 / 總共 MB"；不知道總量時只寫文字。"""
     if total:
         bar.setRange(0, 1000)
         bar.setValue(int(1000 * min(done or 0, total) / total))
@@ -77,12 +77,12 @@ def _card() -> QFrame:
 
 
 def hard_exit_later(seconds: float = 5.0) -> None:
-    """更新要替换文件：正常退出卡住（后台线程、网络请求没结束）时，几秒后强制结束本进程。
-    1.0.9 之前在 172 上出现过：旧助手没退出，文件被占用，更新被还原。"""
+    """更新要替換檔案：正常退出卡住（後臺執行緒、網路請求沒結束）時，幾秒後強制結束本程序。
+    1.0.9 之前在 172 上出現過：舊助手沒退出，檔案被佔用，更新被還原。"""
     import threading
 
     def go():
-        logging.getLogger(__name__).warning("退出超时，强制结束以便更新")
+        logging.getLogger(__name__).warning("退出超時，強制結束以便更新")
         logging.shutdown()
         os._exit(0)
     t = threading.Timer(seconds, go)
@@ -104,21 +104,21 @@ class RankWorker(QThread):
         except rank.RankError as e:
             self.failed.emit(str(e))
         except Exception as e:
-            logging.getLogger(__name__).warning("查分出错：%s", e)
-            self.failed.emit("查询出错，请稍后再试")
+            logging.getLogger(__name__).warning("查分出錯：%s", e)
+            self.failed.emit("查詢出錯，請稍後再試")
 
 
 class UpdateWorker(QThread):
-    """后台线程：mode=check 查有没有新版本（手动检查时先同步统计数据，结果发 data_done）；
-    mode=download 先试增量更新（只下变了的文件，官网优先），不行再从 GitHub 下完整安装包；
-    增量失败、安装包下不了或太慢、便携版要整包，都发 manual（原因, 网盘链接）让用户去网盘下载。
-    strict=True（手动检查）时连不上会发 failed，没有新版本发 uptodate。"""
+    """後臺執行緒：mode=check 查有沒有新版本（手動檢查時先同步統計資料，結果發 data_done）；
+    mode=download 先試增量更新（只下變了的檔案，官網優先），不行再從 GitHub 下完整安裝包；
+    增量失敗、安裝包下不了或太慢、便攜版要整包，都發 manual（原因, 網盤連結）讓使用者去網盤下載。
+    strict=True（手動檢查）時連不上會發 failed，沒有新版本發 uptodate。"""
     found = Signal(dict)
     uptodate = Signal()
     progress = Signal(int, int)
     ready = Signal(str)
     patched = Signal(list, list)
-    phase = Signal(str)  # 当前在做什么（检查更新文件 / 比对本机文件 / 下载更新 / 下载安装包）
+    phase = Signal(str)  # 當前在做什麼（檢查更新檔案 / 比對本機檔案 / 下載更新 / 下載安裝包）
     failed = Signal(str)
     data_done = Signal(str)
     manual = Signal(str, dict)
@@ -136,11 +136,14 @@ class UpdateWorker(QThread):
                     try:
                         self.data_done.emit(self.data_sync())
                     except Exception as e:
-                        logging.getLogger(__name__).warning("手动同步统计数据失败：%s", e)
-                        self.data_done.emit("统计数据这次没连上，稍后会自动再试。")
-                info = update.check(__version__, strict=self.strict)
-                if info:
-                    self.found.emit(info)
+                        logging.getLogger(__name__).warning("手動同步統計資料失敗：%s", e)
+                        self.data_done.emit("統計資料這次沒連上，稍後會自動再試。")
+                if APP_UPDATES_ENABLED:
+                    info = update.check(__version__, strict=self.strict)
+                    if info:
+                        self.found.emit(info)
+                    else:
+                        self.uptodate.emit()
                 else:
                     self.uptodate.emit()
             else:
@@ -151,37 +154,37 @@ class UpdateWorker(QThread):
                     return
                 except patch.NeedFullInstall as e:
                     log.info("要整包更新：%s", e)
-                    reason = "这次更新需要重新下载安装包。"
+                    reason = "這次更新需要重新下載安裝包。"
                 except Exception as e:
-                    log.warning("增量更新失败：%s", e)
-                    self.manual.emit("更新文件下载失败。", update.pan_links())
+                    log.warning("增量更新失敗：%s", e)
+                    self.manual.emit("更新檔案下載失敗。", update.pan_links())
                     return
                 if not self.info.get("url") or is_portable():
                     self.manual.emit(reason, update.pan_links())
                     return
-                self.phase.emit("从 GitHub 下载安装包…")
+                self.phase.emit("從 GitHub 下載安裝包…")
                 try:
                     self.ready.emit(str(update.download(self.info, self.progress.emit)))
                 except update.SlowDownload as e:
                     log.info("GitHub %s", e)
-                    self.manual.emit("从 GitHub 下载太慢。", update.pan_links())
+                    self.manual.emit("從 GitHub 下載太慢。", update.pan_links())
                 except Exception as e:
-                    log.warning("从 GitHub 下载安装包失败：%s", e)
-                    self.manual.emit("从 GitHub 下载安装包失败。", update.pan_links())
-        except Exception as e:  # 更新失败不能影响助手本身
+                    log.warning("從 GitHub 下載安裝包失敗：%s", e)
+                    self.manual.emit("從 GitHub 下載安裝包失敗。", update.pan_links())
+        except Exception as e:  # 更新失敗不能影響助手本身
             self.failed.emit(str(e))
 
 
-BAND_CHOICES = [("", "全体")] + [(c, BANDS[c]) for c in BANDS]
+BAND_CHOICES = [("", "全體")] + [(c, BANDS[c]) for c in BANDS]
 
 
 def about_html() -> str:
-    links = [f"<a href='{WEBSITE}'>官网</a>", f"<a href='{HOMEPAGE}'>GitHub</a>", f"<a href='{DATA_HOMEPAGE}'>统计数据</a>"]
-    for c in cloud.community():  # 云控：QQ 群、B 站、赞助……
+    links = [f"<a href='{WEBSITE}'>官網</a>", f"<a href='{HOMEPAGE}'>GitHub</a>", f"<a href='{DATA_HOMEPAGE}'>統計資料</a>"]
+    for c in cloud.community():  # 雲控：QQ 群、B 站、贊助……
         label = escape(c["name"] + (" " + c["text"] if c.get("text") else ""))
         links.append(f"<a href='{escape(c['url'])}'>{label}</a>" if c.get("url") else label)
-    return (f"<b>AramHex 海克斯大乱斗助手</b> {__version__}{'（便携版）' if is_portable() else ''}<br>" + " · ".join(links) +
-            "<br><span style='color:#777'>非官方工具，与腾讯、Riot Games 无关。</span>")
+    return (f"<b>AramHex 海克斯大亂鬥助手</b> {__version__}{'（便攜版）' if is_portable() else ''}<br>" + " · ".join(links) +
+            "<br><span style='color:#777'>非官方工具，與騰訊、Riot Games 無關。</span>")
 
 
 class MainWindow(QMainWindow):
@@ -193,7 +196,7 @@ class MainWindow(QMainWindow):
         self._cand_ids: list = []
         self._panel_hero = None
         self._hint_shown = False
-        self.setWindowTitle(f"海克斯大乱斗助手 v{__version__}")
+        self.setWindowTitle(f"海克斯大亂鬥助手 v{__version__}")
         self.setWindowIcon(app_icon())
         self.resize(700, 820)
         self.setMinimumSize(640, 700)
@@ -203,25 +206,25 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(10)
 
-        # 顶部状态
+        # 頂部狀態
         head = QHBoxLayout()
         logo = QLabel()
         logo.setPixmap(app_icon().pixmap(40, 40))
-        title = QLabel("<b style='font-size:17px'>海克斯大乱斗助手</b> "
+        title = QLabel("<b style='font-size:17px'>海克斯大亂鬥助手</b> "
                        f"<span style='font-size:13px;color:#555'>{__version__}</span>")
         head.addWidget(logo)
         head.addWidget(title, 1)
-        self.btn_comm = QPushButton()  # 云控里标了 primary 的社区入口（比如 QQ 群），没有就不显示
+        self.btn_comm = QPushButton()  # 雲控裡標了 primary 的社群入口（比如 QQ 群），沒有就不顯示
         self.btn_comm.clicked.connect(self._open_primary)
         self.btn_comm.hide()
         head.addWidget(self.btn_comm)
-        self.btn_dash = QPushButton("帮助")
+        self.btn_dash = QPushButton("幫助")
         self.btn_dash.clicked.connect(lambda: webbrowser.open(HELP_PAGE))
         head.addWidget(self.btn_dash)
         self._show_primary()
         lay.addLayout(head)
 
-        # 有新版本时才显示
+        # 有新版本時才顯示
         self.update_bar = _card()
         self.update_bar.setStyleSheet("QFrame#card{border:1px solid #e0b64a;border-radius:6px;background:#fff8e1}")
         ubv = QVBoxLayout(self.update_bar)
@@ -233,24 +236,24 @@ class MainWindow(QMainWindow):
         self.btn_update.clicked.connect(self._start_update)
         ub.addWidget(self.update_text, 1)
         ub.addWidget(self.btn_update)
-        self.update_progress = _progress_bar()  # 更新时显示：在做什么、下了多少
+        self.update_progress = _progress_bar()  # 更新時顯示：在做什麼、下了多少
         ubv.addWidget(self.update_progress)
         self.update_bar.hide()
         lay.addWidget(self.update_bar)
         self._update_info = None
         self._worker = None
-        # 助手常驻托盘，可能好几天不重启：平时也定时查更新
+        # 助手常駐托盤，可能好幾天不重啟：平時也定時查更新
         self._update_timer = QTimer(self)
         self._update_timer.timeout.connect(self.check_update)
         self._update_timer.start(UPDATE_EVERY_MS)
 
         self.status = QLabel()
-        self.status.setWordWrap(False)  # 内容自带 <br> 换行；自动换行会让高度算不准被压扁
+        self.status.setWordWrap(False)  # 內容自帶 <br> 換行；自動換行會讓高度算不準被壓扁
         self.status.setTextFormat(Qt.RichText)
         sc = _card()
         scl = QVBoxLayout(sc)
         scl.addWidget(self.status)
-        self.data_progress = _progress_bar()  # 下载统计数据时显示
+        self.data_progress = _progress_bar()  # 下載統計資料時顯示
         scl.addWidget(self.data_progress)
         lay.addWidget(sc)
 
@@ -260,7 +263,7 @@ class MainWindow(QMainWindow):
         self.hero_label = QLabel()
         self.hero_label.setTextFormat(Qt.RichText)
         hl.addWidget(self.hero_label)
-        self.cs_label = QLabel()  # 选人界面：待选栏按胜率排序的汇总
+        self.cs_label = QLabel()  # 選人介面：待選欄按勝率排序的彙總
         self.cs_label.setTextFormat(Qt.RichText)
         self.cs_label.setWordWrap(True)
         self.cs_label.hide()
@@ -269,7 +272,7 @@ class MainWindow(QMainWindow):
         hl.addLayout(self.cands)
         row = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜索英雄")
+        self.search.setPlaceholderText("搜尋英雄")
         self.search.returnPressed.connect(self._search_pick)
         btn_clear = QPushButton("清除")
         btn_clear.clicked.connect(lambda: self.engine.set_hero(None))
@@ -291,7 +294,7 @@ class MainWindow(QMainWindow):
         hl.addLayout(brow)
         lay.addWidget(hc)
 
-        # 标签页
+        # 標籤頁
         self.tabs = QTabWidget()
         self.tab_hero = QLabel()
         self.tab_hero.setTextFormat(Qt.RichText)
@@ -300,11 +303,11 @@ class MainWindow(QMainWindow):
         self.tab_hero.setTextInteractionFlags(Qt.TextSelectableByMouse)
         w1 = QWidget()
         QVBoxLayout(w1).addWidget(self.tab_hero)
-        self.tabs.addTab(w1, "出装与加点")
+        self.tabs.addTab(w1, "出裝與加點")
 
         w2 = QWidget()
         l2 = QVBoxLayout(w2)
-        self.offer_advice = QLabel("未在选海克斯")
+        self.offer_advice = QLabel("未在選海克斯")
         self.offer_advice.setWordWrap(True)
         l2.addWidget(self.offer_advice)
         grid = QGridLayout()
@@ -321,18 +324,18 @@ class MainWindow(QMainWindow):
             self.offer_cards.append(lab)
         l2.addLayout(grid)
         btns = QHBoxLayout()
-        b1 = QPushButton("重新识别")
+        b1 = QPushButton("重新識別")
         b1.clicked.connect(self.engine.rescan)
-        b2 = QPushButton("重新校准卡片位置")
+        b2 = QPushButton("重新校準卡片位置")
         b2.clicked.connect(self._recalibrate)
         btns.addWidget(b1)
         btns.addWidget(b2)
         btns.addStretch(1)
         l2.addLayout(btns)
         l2.addStretch(1)
-        self.tabs.addTab(w2, "海克斯三选一")
+        self.tabs.addTab(w2, "海克斯三選一")
 
-        self.tabs.addTab(self._settings_tab(), "设置")
+        self.tabs.addTab(self._settings_tab(), "設定")
         lay.addWidget(self.tabs, 1)
         self.setCentralWidget(root)
 
@@ -341,7 +344,7 @@ class MainWindow(QMainWindow):
         self.timer.start(1000)
         self.refresh()
 
-    # ---------- 设置 ----------
+    # ---------- 設定 ----------
 
     def _settings_tab(self) -> QWidget:
         s = self.engine.settings
@@ -351,33 +354,33 @@ class MainWindow(QMainWindow):
         f = QFormLayout()
         f.setVerticalSpacing(10)
         outer.addLayout(f)
-        self.set_win = QCheckBox("显示胜率数字")
+        self.set_win = QCheckBox("顯示勝率數字")
         self.set_win.setChecked(s.show_winrate)
-        self.set_live = QCheckBox("对局中用游戏接口识别英雄（更准确）")
+        self.set_live = QCheckBox("對局中用遊戲介面識別英雄（更準確）")
         self.set_live.setChecked(s.use_liveclient)
         self.set_corner = QComboBox()
         self.set_corner.addItems(["右上角", "左上角"])
         self.set_corner.setCurrentIndex(0 if s.overlay_corner == "top-right" else 1)
-        self.set_overlay = QCheckBox("显示游戏内浮窗")
+        self.set_overlay = QCheckBox("顯示遊戲內浮窗")
         self.set_overlay.setChecked(s.overlay)
         self.set_speed = QComboBox()
         for key, (label, _) in SPEEDS.items():
             self.set_speed.addItem(label, key)
         self.set_speed.setCurrentIndex(max(0, self.set_speed.findData(s.speed)))
-        self.set_capture = QCheckBox("录屏、截图时显示浮窗")
+        self.set_capture = QCheckBox("錄屏、截圖時顯示浮窗")
         self.set_capture.setChecked(s.allow_capture)
-        self.set_autoshot = QCheckBox("选英雄、三选一时自动截图")
+        self.set_autoshot = QCheckBox("選英雄、三選一時自動截圖")
         self.set_autoshot.setChecked(s.auto_screenshot)
-        btn_shots = QPushButton("打开截图文件夹")
+        btn_shots = QPushButton("開啟截圖資料夾")
         btn_shots.clicked.connect(lambda: os.startfile(str(shots_dir())) if hasattr(os, "startfile") else None)
         shot_row = QHBoxLayout()
         shot_row.addWidget(self.set_autoshot, 1)
         shot_row.addWidget(btn_shots)
-        self.set_auto = QCheckBox("开机自动启动")
+        self.set_auto = QCheckBox("開機自動啟動")
         self.set_auto.setChecked(autostart.is_enabled())
-        self.set_data = QCheckBox("自动更新统计数据")
+        self.set_data = QCheckBox("自動更新統計資料")
         self.set_data.setChecked(s.check_data_updates)
-        f.addRow("识别频率", self.set_speed)
+        f.addRow("識別頻率", self.set_speed)
         f.addRow("", self.set_win)
         f.addRow("", self.set_overlay)
         f.addRow("浮窗位置", self.set_corner)
@@ -386,7 +389,7 @@ class MainWindow(QMainWindow):
         f.addRow("", self.set_live)
         f.addRow("", self.set_auto)
         f.addRow("", self.set_data)
-        save = QPushButton("保存设置")
+        save = QPushButton("儲存設定")
         save.clicked.connect(self._save_settings)
         f.addRow("", save)
 
@@ -397,9 +400,9 @@ class MainWindow(QMainWindow):
         rv.addWidget(QLabel("<b>我的水平</b>"))
         rrow = QHBoxLayout()
         self.rank_input = QLineEdit(s.riot_id)
-        self.rank_input.setPlaceholderText("名字#编号")
+        self.rank_input.setPlaceholderText("名字#編號")
         self.rank_input.returnPressed.connect(self._query_rank)
-        self.btn_rank = QPushButton("查询")
+        self.btn_rank = QPushButton("查詢")
         self.btn_rank.setMinimumWidth(90)
         self.btn_rank.clicked.connect(self._query_rank)
         rrow.addWidget(self.rank_input, 1)
@@ -427,7 +430,7 @@ class MainWindow(QMainWindow):
         cv.addWidget(self.about_data)
         row = QHBoxLayout()
         row.setContentsMargins(0, 6, 0, 0)
-        self.btn_check = QPushButton("检查更新")
+        self.btn_check = QPushButton("檢查更新")
         self.btn_check.setMinimumWidth(140)
         self.btn_check.setMinimumHeight(34)
         self.btn_check.clicked.connect(lambda: self.check_update(manual=True))
@@ -435,7 +438,7 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         cv.addLayout(row)
         outer.addWidget(card)
-        # 设置项越来越多：放进可滚动区域，窗口矮的时候不会被压扁
+        # 設定項越來越多：放進可滾動區域，視窗矮的時候不會被壓扁
         scroll = QScrollArea()
         scroll.setWidget(w)
         scroll.setWidgetResizable(True)
@@ -446,7 +449,7 @@ class MainWindow(QMainWindow):
 
     def _show_rank(self, res: dict):
         text = rank.describe(res)
-        self.rank_result.setText(text or "<span style='color:#777'>填自己的「名字#编号」，查区内排名，自动选对应分段</span>")
+        self.rank_result.setText(text or "<span style='color:#777'>填自己的「名字#編號」，查區內排名，自動選對應分段</span>")
         r = (res or {}).get("results") or []
         if hasattr(self, "my_rank_label"):
             self.my_rank_label.setText(f"你：{r[0]['band_name']}（前 {r[0]['top'] * 100:.1f}%）" if r else "")
@@ -457,11 +460,11 @@ class MainWindow(QMainWindow):
         rid = self.rank_input.text().strip()
         if not silent:
             self.btn_rank.setEnabled(False)
-            self.btn_rank.setText("查询中…")
+            self.btn_rank.setText("查詢中…")
         self._rank_worker = RankWorker(rid, self)
         self._rank_worker.done.connect(lambda res: self._rank_done(rid, res, silent))
         self._rank_worker.failed.connect(lambda msg: self._rank_failed(msg, silent))
-        self._rank_worker.finished.connect(lambda: (self.btn_rank.setEnabled(True), self.btn_rank.setText("查询")))
+        self._rank_worker.finished.connect(lambda: (self.btn_rank.setEnabled(True), self.btn_rank.setText("查詢")))
         self._rank_worker.start()
 
     def _rank_done(self, rid: str, res: dict, silent: bool):
@@ -474,22 +477,22 @@ class MainWindow(QMainWindow):
         if not silent and band in BANDS:
             i = self.band_box.findData(band)
             if i >= 0:
-                self.band_box.setCurrentIndex(i)  # 触发 engine.set_band，记住选择
+                self.band_box.setCurrentIndex(i)  # 觸發 engine.set_band，記住選擇
 
     def _rank_failed(self, msg: str, silent: bool):
         if silent:
-            logging.getLogger(__name__).info("自动查分失败：%s", msg)
+            logging.getLogger(__name__).info("自動查分失敗：%s", msg)
             return
         self.rank_result.setText(f"<span style='color:#d0533f'>{escape(msg)}</span>")
 
     def refresh_rank_if_stale(self):
-        """启动时：上次查分超过 7 天就悄悄再查一次（不改你选的分段）。"""
+        """啟動時：上次查分超過 7 天就悄悄再查一次（不改你選的分段）。"""
         import time
         s = self.engine.settings
         if s.riot_id and time.time() - float((s.my_rank or {}).get("queried_at") or 0) > 7 * 86400:
             self._query_rank(silent=True)
 
-    # ---------- 云控 ----------
+    # ---------- 雲控 ----------
 
     def _show_primary(self):
         p = cloud.primary_link()
@@ -514,7 +517,7 @@ class MainWindow(QMainWindow):
             s.seen_notice = notice["id"]
             s.save()
             box = QMessageBox(QMessageBox.Information, "公告", notice["text"], parent=self)
-            b_open = box.addButton("查看", QMessageBox.AcceptRole) if notice.get("url") else None
+            b_open = box.addButton("檢視", QMessageBox.AcceptRole) if notice.get("url") else None
             box.addButton("知道了", QMessageBox.RejectRole)
             box.exec()
             if b_open is not None and box.clickedButton() is b_open:
@@ -522,9 +525,9 @@ class MainWindow(QMainWindow):
         minv = cfg.get("min_version") or ""
         if minv and update.is_newer(minv, __version__) and not getattr(self, "_min_warned", False):
             self._min_warned = True
-            box = QMessageBox(QMessageBox.Warning, "需要更新", f"当前版本 {__version__} 太旧，请更新到最新版本。", parent=self)
+            box = QMessageBox(QMessageBox.Warning, "需要更新", f"當前版本 {__version__} 太舊，請更新到最新版本。", parent=self)
             b_up = box.addButton("立即更新", QMessageBox.AcceptRole)
-            box.addButton("稍后", QMessageBox.RejectRole)
+            box.addButton("稍後", QMessageBox.RejectRole)
             box.exec()
             if box.clickedButton() is b_up:
                 if self._update_info:
@@ -549,22 +552,22 @@ class MainWindow(QMainWindow):
         try:
             autostart.set_enabled(self.set_auto.isChecked())
         except OSError as e:
-            QMessageBox.warning(self, "开机自启", f"设置失败：{e}")
-        QMessageBox.information(self, "设置", "已保存。")
+            QMessageBox.warning(self, "開機自啟", f"設定失敗：{e}")
+        QMessageBox.information(self, "設定", "已儲存。")
 
     def _recalibrate(self):
         self.engine.reset_calibration()
-        QMessageBox.information(self, "重新校准", "已清除卡片位置，下次出现海克斯三选一时会重新校准。")
+        QMessageBox.information(self, "重新校準", "已清除卡片位置，下次出現海克斯三選一時會重新校準。")
 
     # ---------- 更新 ----------
 
     def check_update(self, manual: bool = False):
-        """启动、再次打开助手时各查一次，平时每 UPDATE_EVERY_MS 查一次；
-        只提示，用户点了「立即更新」才下载安装。正在查或正在下载时跳过。
-        manual=True 是设置页「检查更新」按钮：结果（最新 / 有新版本 / 失败）都弹窗告诉用户。"""
+        """啟動、再次開啟助手時各查一次，平時每 UPDATE_EVERY_MS 查一次；
+        只提示，使用者點了「立即更新」才下載安裝。正在查或正在下載時跳過。
+        manual=True 是設定頁「檢查更新」按鈕：結果（最新 / 有新版本 / 失敗）都彈窗告訴使用者。"""
         if self._worker and self._worker.isRunning():
             if manual:
-                QMessageBox.information(self, "检查更新", "正在检查或下载更新，请稍候。")
+                QMessageBox.information(self, "檢查更新", "正在檢查或下載更新，請稍候。")
             return
         self._data_msg = ""
         self._worker = UpdateWorker("check", parent=self, strict=manual,
@@ -573,36 +576,38 @@ class MainWindow(QMainWindow):
         self._worker.cloud.connect(self._apply_cloud)
         if manual:
             self.btn_check.setEnabled(False)
-            self.btn_check.setText("检查中…")
+            self.btn_check.setText("檢查中…")
             self._worker.data_done.connect(lambda m: setattr(self, "_data_msg", m))
             self._worker.uptodate.connect(lambda: QMessageBox.information(
-                self, "检查更新", f"软件已是最新版本（{__version__}）。" + self._data_line()))
+                self, "檢查更新", (f"台服版程式目前為最新版本（已停用上游自動更新）；{self._data_line()}"
+                                     if not APP_UPDATES_ENABLED else
+                                     f"軟體已是最新版本（{__version__}）。" + self._data_line())))
             self._worker.failed.connect(self._check_failed)
             self._worker.finished.connect(lambda: (self.btn_check.setEnabled(True),
-                                                   self.btn_check.setText("检查更新")))
+                                                   self.btn_check.setText("檢查更新")))
         self._worker.start()
 
     def _sync_data_now(self) -> str:
-        """「检查更新」按钮：马上查统计数据（不管自动更新开关），返回一句结果。"""
+        """「檢查更新」按鈕：馬上查統計資料（不管自動更新開關），返回一句結果。"""
         st = self.engine.store
         changed = st.sync_data(force=True, manual=True)
         ds = st.dataset
         tail = f"（{ds.patch} 版本，截至 {str(ds.snapshot_at)[5:10]}）" if ds else ""
         if changed:
-            return f"统计数据已更新{tail}。"
+            return f"統計資料已更新{tail}。"
         if st.sync_error:
-            return "统计数据这次没连上，稍后会自动再试。"
-        return f"统计数据已是最新{tail}。"
+            return "統計資料這次沒連上，稍後會自動再試。"
+        return f"統計資料已是最新{tail}。"
 
     def _data_line(self) -> str:
         msg = getattr(self, "_data_msg", "")
         return f"\n{msg}" if msg else ""
 
     def _check_failed(self, msg: str):
-        logging.getLogger(__name__).warning("检查更新失败：%s", msg)
-        box = QMessageBox(QMessageBox.Warning, "检查更新", "检查更新失败，请稍后再试。" + self._data_line(), parent=self)
-        b_site = box.addButton("官网下载", QMessageBox.ActionRole)
-        box.addButton("关闭", QMessageBox.RejectRole)
+        logging.getLogger(__name__).warning("檢查更新失敗：%s", msg)
+        box = QMessageBox(QMessageBox.Warning, "檢查更新", "檢查更新失敗，請稍後再試。" + self._data_line(), parent=self)
+        b_site = box.addButton("官網下載", QMessageBox.ActionRole)
+        box.addButton("關閉", QMessageBox.RejectRole)
         box.exec()
         if box.clickedButton() is b_site:
             webbrowser.open(update.DOWNLOAD_PAGE)
@@ -611,38 +616,38 @@ class MainWindow(QMainWindow):
         known = (self._update_info or {}).get("version")
         self._update_info = info
         notes = f"<br><span style='color:#777'>{escape(info['notes'][:200])}</span>" if info.get("notes") else ""
-        # 打包后的程序都能先试增量更新；源码运行时只有带安装包地址的才能直接装
+        # 打包後的程式都能先試增量更新；原始碼執行時只有帶安裝包地址的才能直接裝
         direct = patch.install_root() is not None or (bool(info.get("url")) and not is_portable())
-        self.update_text.setText(f"<b>有新版本 {info['version']}</b>（当前 {__version__}）{notes}")
-        self.btn_update.setText("立即更新" if direct else "去下载")
+        self.update_text.setText(f"<b>有新版本 {info['version']}</b>（當前 {__version__}）{notes}")
+        self.btn_update.setText("立即更新" if direct else "去下載")
         self.update_bar.show()
         tray = getattr(self, "tray", None)
         if manual:
-            ask = QMessageBox.question(self, "检查更新", f"有新版本 {info['version']}（当前 {__version__}）。"
+            ask = QMessageBox.question(self, "檢查更新", f"有新版本 {info['version']}（當前 {__version__}）。"
                                        + (f"\n\n{info['notes']}" if info.get("notes") else "")
                                        + (f"\n\n{self._data_msg}" if getattr(self, "_data_msg", "") else "")
-                                       + "\n\n现在更新吗？")
+                                       + "\n\n現在更新嗎？")
             if ask == QMessageBox.Yes:
                 if self._worker:
-                    self._worker.wait(3000)  # 检查线程发完信号就结束，等它收尾再开始下载
+                    self._worker.wait(3000)  # 檢查執行緒發完訊號就結束，等它收尾再開始下載
                 self._start_update()
-        elif tray and known != info["version"]:  # 同一个版本只弹一次通知
-            tray.showMessage("海克斯大乱斗助手", f"有新版本 {info['version']}，打开主界面点「立即更新」。",
+        elif tray and known != info["version"]:  # 同一個版本只彈一次通知
+            tray.showMessage("海克斯大亂鬥助手", f"有新版本 {info['version']}，開啟主介面點「立即更新」。",
                              app_icon(), 6000)
 
     def _start_update(self):
         if not self._update_info or (self._worker and self._worker.isRunning()):
             return
-        # 源码运行、又没有安装包地址：只能打开下载页
+        # 原始碼執行、又沒有安裝包地址：只能開啟下載頁
         if patch.install_root() is None and (is_portable() or not self._update_info.get("url")):
             webbrowser.open(WEBSITE)
             return
         if self.engine.snapshot().get("phase") == "ingame":
-            QMessageBox.information(self, "更新", "正在对局中，打完这局再更新。")
+            QMessageBox.information(self, "更新", "正在對局中，打完這局再更新。")
             return
         self.btn_update.setEnabled(False)
         self.btn_update.setText("更新中…")
-        self._update_stage = "准备更新…"
+        self._update_stage = "準備更新…"
         show_progress(self.update_progress, self._update_stage)
         self._worker = UpdateWorker("download", info=self._update_info, parent=self)
         self._worker.phase.connect(self._update_phase)
@@ -659,25 +664,25 @@ class MainWindow(QMainWindow):
         show_progress(self.update_progress, text)
 
     def _apply_patch(self, changed: list, stale: list):
-        show_progress(self.update_progress, "下载完成，正在重启助手…", 1, 1)
+        show_progress(self.update_progress, "下載完成，正在重啟助手…", 1, 1)
         root = patch.install_root()
         try:
             patch.launch_apply(root, changed, stale, self._update_info["version"], relaunch=str(root / "AramHex.exe"))
         except OSError as e:
             return self._update_failed(str(e))
-        self.tray.quit()  # 退出让出文件；替换完自动重新打开
+        self.tray.quit()  # 退出讓出檔案；替換完自動重新開啟
         hard_exit_later()
 
     def _offer_manual(self, reason: str, links: dict | None = None):
-        """更新没能在软件里完成：提示原因，按钮直接打开网盘下载（链接从官网读，每次发版会换）或官网下载区。"""
+        """更新沒能在軟體裡完成：提示原因，按鈕直接開啟網盤下載（連結從官網讀，每次發版會換）或官網下載區。"""
         self.update_progress.hide()
         self.btn_update.setEnabled(True)
-        self.btn_update.setText("重试更新")
+        self.btn_update.setText("重試更新")
         links = links or {}
         pan = links.get("portable" if is_portable() else "setup")
-        box = QMessageBox(QMessageBox.Information, "更新", f"{reason}请下载新版本，直接覆盖安装，设置会保留。", parent=self)
-        b_pan = box.addButton("网盘下载", QMessageBox.AcceptRole)
-        b_site = box.addButton("官网下载", QMessageBox.ActionRole)
+        box = QMessageBox(QMessageBox.Information, "更新", f"{reason}請下載新版本，直接覆蓋安裝，設定會保留。", parent=self)
+        b_pan = box.addButton("網盤下載", QMessageBox.AcceptRole)
+        b_site = box.addButton("官網下載", QMessageBox.ActionRole)
         box.addButton("取消", QMessageBox.RejectRole)
         box.setDefaultButton(b_pan)
         box.exec()
@@ -687,17 +692,17 @@ class MainWindow(QMainWindow):
             webbrowser.open(update.DOWNLOAD_PAGE)
 
     def _install(self, path: str):
-        show_progress(self.update_progress, "下载完成，正在启动安装程序…", 1, 1)
+        show_progress(self.update_progress, "下載完成，正在啟動安裝程式…", 1, 1)
         try:
             update.launch_installer(path)
         except OSError as e:
             return self._update_failed(str(e))
-        self.tray.quit()  # 退出让安装程序替换文件；装完会自动重新打开
+        self.tray.quit()  # 退出讓安裝程式替換檔案；裝完會自動重新開啟
         hard_exit_later()
 
     def _update_failed(self, msg: str):
-        logging.getLogger(__name__).warning("更新失败：%s", msg)
-        self._offer_manual("更新失败。")
+        logging.getLogger(__name__).warning("更新失敗：%s", msg)
+        self._offer_manual("更新失敗。")
 
     def _ensure_completer(self):
         heroes = self.engine.store.heroes
@@ -723,14 +728,14 @@ class MainWindow(QMainWindow):
             if it.widget():
                 it.widget().deleteLater()
         if cands:
-            self.cands.addWidget(QLabel("候选："))
+            self.cands.addWidget(QLabel("候選："))
         for c in cands[:6]:
             b = QPushButton(c.get("name") or c.get("id"))
             b.clicked.connect(lambda _=False, hid=c.get("id"): self.engine.set_hero(hid))
             self.cands.addWidget(b)
         self.cands.addStretch(1)
 
-    # ---------- 刷新 ----------
+    # ---------- 重新整理 ----------
 
     def refresh(self):
         if not self.isVisible():
@@ -740,15 +745,15 @@ class MainWindow(QMainWindow):
         dd = snap.get("data", {})
         v = snap.get("vision", {})
         self.status.setText(
-            f"<b>状态：</b>{PHASE_CN.get(snap.get('phase'), snap.get('phase'))}<br>"
-            f"<b>海克斯识别：</b>{VISION_CN.get(v.get('status'), v.get('status'))}"
-            f"{' · <span style=\"color:#d0533f\">截图全黑，请把游戏改成无边框</span>' if v.get('blank') else ''}<br>"
-            f"<b>数据：</b>{BANDS.get(dd.get('band_effective'), '全体')} · {data_status_html(dd)}")
+            f"<b>狀態：</b>{PHASE_CN.get(snap.get('phase'), snap.get('phase'))}<br>"
+            f"<b>海克斯識別：</b>{VISION_CN.get(v.get('status'), v.get('status'))}"
+            f"{' · <span style=\"color:#d0533f\">截圖全黑，請把遊戲改成無邊框</span>' if v.get('blank') else ''}<br>"
+            f"<b>資料：</b>{BANDS.get(dd.get('band_effective'), '全體')} · {data_status_html(dd)}")
         if hasattr(self, "about_data"):
-            self.about_data.setText("统计数据：" + data_status_html(dd))
+            self.about_data.setText("統計資料：" + data_status_html(dd))
         dp = dd.get("data_progress")
         if dp:
-            show_progress(self.data_progress, "统计数据更新中", dp.get("done"), dp.get("total"))
+            show_progress(self.data_progress, "統計資料更新中", dp.get("done"), dp.get("total"))
         else:
             self.data_progress.hide()
 
@@ -760,18 +765,18 @@ class MainWindow(QMainWindow):
             b = self.engine.hero_brief(hid)
             rating = []
             if b.get("grade"):
-                rating.append(f"评级 {b['grade']}")
+                rating.append(f"評級 {b['grade']}")
             if b.get("rank"):
-                rating.append(f"胜率排名 {b['rank']}/{b.get('total') or '?'}")
+                rating.append(f"勝率排名 {b['rank']}/{b.get('total') or '?'}")
             if show_win and r.get("win") is not None:
-                rating.append(f"胜率 {_pct(r['win'])}")
+                rating.append(f"勝率 {_pct(r['win'])}")
             if r.get("pick") is not None:
-                rating.append(f"出场率 {_pct(r['pick'])}")
+                rating.append(f"出場率 {_pct(r['pick'])}")
             self.hero_label.setText(
                 f"<span style='font-size:18px'><b>{h['name']}</b></span> {h['nick']}<br>"
                 f"{' · '.join(rating)}")
         else:
-            self.hero_label.setText("<b>未识别到英雄</b>")
+            self.hero_label.setText("<b>未識別到英雄</b>")
         cs = snap.get("champ_select")
         if cs and (cs.get("bench") or cs.get("cards")):
             from .overlay import champ_select_summary
@@ -787,7 +792,7 @@ class MainWindow(QMainWindow):
             self.tab_hero.setText(self._hero_html(d, show_win))
         elif not d:
             self._panel_hero = None
-            self.tab_hero.setText("<span style='color:#777'>还没有选英雄</span>")
+            self.tab_hero.setText("<span style='color:#777'>還沒有選英雄</span>")
         self._render_offer(snap.get("evaluation"), show_win)
 
     def _hero_html(self, d, show_win) -> str:
@@ -798,7 +803,7 @@ class MainWindow(QMainWindow):
         top = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
         top.sort(key=lambda a: -a["delta"])
         if top:
-            out.append("<b>推荐海克斯</b>")
+            out.append("<b>推薦海克斯</b>")
             for a in top[:8]:
                 out.append(f"　{a['name']} <span style='color:#777'>{RARITY_CN.get(a.get('rarity'), '')}"
                            f" {a.get('tier') or ''}</span> <b style='color:#2e9d5b'>{a['delta']:+.1f}</b>")
@@ -806,29 +811,29 @@ class MainWindow(QMainWindow):
 
     def _render_offer(self, ev, show_win):
         if not ev:
-            self.offer_advice.setText("<span style='color:#777'>未在选海克斯</span>")
+            self.offer_advice.setText("<span style='color:#777'>未在選海克斯</span>")
             for lab in self.offer_cards:
                 lab.setText("")
             return
         self.offer_advice.setText(f"<b style='font-size:15px'>{ev['advice']}</b>")
         for lab, r in zip(self.offer_cards, ev["slots"]):
             v, col = VERDICT_CN.get(r["verdict"], VERDICT_CN["unknown"])
-            lines = [f"<b style='color:{col}'>{v}</b>", f"<b>{r.get('name') or '未识别'}</b>"]
+            lines = [f"<b style='color:{col}'>{v}</b>", f"<b>{r.get('name') or '未識別'}</b>"]
             meta = [RARITY_CN.get(r.get("rarity"), "")]
             if r.get("tier"):
-                meta.append(f"{r['tier']}级")
+                meta.append(f"{r['tier']}級")
             lines.append("<span style='color:#777'>" + " ".join(m for m in meta if m) + "</span>")
             if r.get("score") is not None:
                 s = f"{r['score']:+.1f}"
                 if show_win and r.get("win") is not None:
-                    s += f" · 胜率 {_pct(r['win'])}"
+                    s += f" · 勝率 {_pct(r['win'])}"
                 if r.get("thin"):
-                    warn = "⚠ 样本太少" if r["thin"] == "too_few" else "样本偏少"
+                    warn = "⚠ 樣本太少" if r["thin"] == "too_few" else "樣本偏少"
                     s += f" · <span style='color:#ff7a6b'>{warn}</span>"
                 lines.append(s)
             lab.setText("<br>".join(lines))
 
-    # ---------- 窗口行为 ----------
+    # ---------- 視窗行為 ----------
 
     def show_and_raise(self):
         self.show()
@@ -844,7 +849,7 @@ class MainWindow(QMainWindow):
             self._hint_shown = True
             tray = getattr(self, "tray", None)
             if tray:
-                tray.showMessage("海克斯大乱斗助手", "助手仍在后台运行，右下角托盘图标可以重新打开或退出。",
+                tray.showMessage("海克斯大亂鬥助手", "助手仍在後臺執行，右下角托盤圖示可以重新開啟或退出。",
                                  app_icon(), 4000)
 
 
@@ -852,17 +857,17 @@ class Tray(QSystemTrayIcon):
     def __init__(self, engine, window: MainWindow, overlay):
         super().__init__(app_icon())
         self.engine, self.window, self.overlay = engine, window, overlay
-        self.setToolTip(f"海克斯大乱斗助手 v{__version__}")
+        self.setToolTip(f"海克斯大亂鬥助手 v{__version__}")
         m = QMenu()
-        m.addAction("打开主界面", window.show_and_raise)
-        self.act_overlay = QAction("显示游戏浮窗", m, checkable=True)
+        m.addAction("開啟主介面", window.show_and_raise)
+        self.act_overlay = QAction("顯示遊戲浮窗", m, checkable=True)
         self.act_overlay.setChecked(engine.settings.overlay)
         self.act_overlay.toggled.connect(self._toggle_overlay)
         m.addAction(self.act_overlay)
-        m.addAction("重新识别", engine.rescan)
-        m.addAction("检查更新", lambda: (window.show_and_raise(), window.check_update(manual=True)))
+        m.addAction("重新識別", engine.rescan)
+        m.addAction("檢查更新", lambda: (window.show_and_raise(), window.check_update(manual=True)))
         self.messageClicked.connect(window.show_and_raise)
-        self.act_auto = QAction("开机自动启动", m, checkable=True)
+        self.act_auto = QAction("開機自動啟動", m, checkable=True)
         self.act_auto.setChecked(autostart.is_enabled())
         self.act_auto.toggled.connect(self._toggle_auto)
         m.addAction(self.act_auto)
@@ -893,7 +898,7 @@ class Tray(QSystemTrayIcon):
     def _tooltip(self):
         s = self.engine.snapshot()
         h = s.get("hero")
-        self.setToolTip(f"海克斯大乱斗助手 v{__version__}\n" + PHASE_CN.get(s.get("phase"), "") +
+        self.setToolTip(f"海克斯大亂鬥助手 v{__version__}\n" + PHASE_CN.get(s.get("phase"), "") +
                         (f"\n英雄：{h['name']}" if h else ""))
 
     def quit(self):

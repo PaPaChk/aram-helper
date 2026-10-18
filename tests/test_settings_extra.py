@@ -1,4 +1,4 @@
-"""识别频率档位和"录屏、截图时显示浮窗"开关。"""
+"""識別頻率檔位和"錄屏、截圖時顯示浮窗"開關。"""
 import json
 
 from lolhex.config import SPEEDS, Settings
@@ -12,7 +12,7 @@ def test_speed_factor(tmp_path):
     p.write_text(json.dumps({"speed": "low"}), encoding="utf-8")
     assert Settings.load(p).speed_factor == SPEEDS["low"][1] == 4.0
     p.write_text(json.dumps({"speed": "不存在"}), encoding="utf-8")
-    assert Settings.load(p).speed_factor == 1.0  # 认不出的档位按标准
+    assert Settings.load(p).speed_factor == 1.0  # 認不出的檔位按標準
 
 
 def test_capture_toggle_applies_to_open_windows(monkeypatch):
@@ -25,6 +25,6 @@ def test_capture_toggle_applies_to_open_windows(monkeypatch):
     window.exclude_from_capture(202)
     assert applied == [(101, False), (202, False)]
     applied.clear()
-    window.set_capture_allowed(True)  # 打开后，已经开着的浮窗立即能被截到
+    window.set_capture_allowed(True)  # 開啟後，已經開著的浮窗立即能被截到
     assert sorted(applied) == [(101, True), (202, True)] and window.capture_allowed()
     window.set_capture_allowed(False)

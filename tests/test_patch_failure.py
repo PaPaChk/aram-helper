@@ -1,11 +1,11 @@
-"""增量更新的收尾：替换失败时下次启动能知道；替换脚本会强制结束卡住的旧进程、挪文件会重试。"""
+"""增量更新的收尾：替換失敗時下次啟動能知道；替換指令碼會強制結束卡住的舊程序、挪檔案會重試。"""
 from lolhex import patch
 
 
 def test_take_failure_reports_once_and_cleans(tmp_path):
     (tmp_path / patch.STAGING).mkdir()
-    (tmp_path / "update-failed.txt").write_text("文件被占用", encoding="utf-8-sig")
-    assert patch.take_failure(tmp_path) == "文件被占用"
+    (tmp_path / "update-failed.txt").write_text("檔案被佔用", encoding="utf-8-sig")
+    assert patch.take_failure(tmp_path) == "檔案被佔用"
     assert not (tmp_path / patch.STAGING).exists()
     assert patch.take_failure(tmp_path) is None
 

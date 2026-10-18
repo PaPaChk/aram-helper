@@ -1,43 +1,51 @@
-# AramHex 海克斯大乱斗助手
+# AramHex 台服版
 
-英雄联盟国服「海克斯大乱斗」桌面助手。官网：[aramhex.com](https://aramhex.com)
+以 [czgreat/aramhex](https://github.com/czgreat/aramhex) 為基礎移植的英雄聯盟「海克斯大亂鬥」桌面助手。
 
-- **英雄胜率**：选英雄时自动认出你和队友的英雄，显示胜率和评级。
-- **海克斯胜率**：三选一时按本英雄的海克斯胜率推荐。
-- **出装与加点**：官方出装和技能加点，按胜率排序。
-- **分段**：可以切换娱乐、中分、高分、顶尖局的数据。
+台服版保留上游的國服自採勝率，介面與卡片名稱改用繁體中文及台服官方譯名。勝率資料會明確標示為「國服樣本」；英雄、增幅與裝備名稱由 Riot 台服靜態資料覆寫。
 
-只截屏识别，不接入客户端、不读内存、不模拟按键。
+## 已完成
 
-## 下载
+- 台服英雄、增幅、裝備名稱與描述。
+- 繁體中文 UI、錯誤訊息與設定頁。
+- 保留國服、台服、英文名稱及玩家別名搜尋。
+- OCR 以台服三選一卡片名稱建立匹配字典。
+- 台服版使用獨立資料目錄 `%APPDATA%\AramHexTW`。
+- 停用會覆蓋台服版的上游程式自動更新。
+- 保留國服勝率統計與分段，來源標示為「國服樣本」。
 
-- 官网：[aramhex.com](https://aramhex.com)
-- GitHub：[Releases](https://github.com/czgreat/aramhex/releases)
-  - `AramHex-Setup-<版本>.exe`：安装版，可以在软件里一键更新
-  - `AramHex-Portable-<版本>.zip`：便携版，解压就能用
+## 從原始碼執行
 
-游戏要设成**无边框**或**窗口化**。Windows 提示「已保护你的电脑」时，点「更多信息」→「仍要运行」。
-
-## 数据
-
-- 胜率统计：自采对局，见 [aramhex-data](https://github.com/czgreat/aramhex-data)（CC BY-NC 4.0）。只统计采集到的对局，不是全服数据。
-- 英雄、海克斯、装备、官方出装和加点：腾讯官方公开数据。
-
-## 从源码运行
-
-Windows 10/11 64 位，Python 3.13：
+Windows 10/11 64 位、Python 3.13：
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m lolhex
 .venv\Scripts\python -m pytest
 ```
 
-打包和发版见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+## 台服靜態資料
 
-## 协议
+`lolhex/data/bundled/tw-catalog.json` 由專案根目錄的 `data/generated/catalog.json` 匯入，包含：
 
-程序代码 [MIT](LICENSE)；统计数据 [CC BY-NC 4.0](https://github.com/czgreat/aramhex-data/blob/main/LICENSE)；第三方组件见 [NOTICE.md](NOTICE.md)。
+- 250 位英雄
+- 450 個海克斯增幅
+- 870 件裝備
+- 台服 zh-TW 名稱、描述與圖示路徑
 
-非官方工具，和腾讯、Riot Games 没有关系。
+重新產生資料後，將新 catalog 複製到上述位置即可。
+
+## 資料來源與限制
+
+- 勝率：上游 `aramhex-data` 的國服自採樣本（CC BY-NC 4.0）。
+- 靜態名稱：Riot CommunityDragon 台服資料。
+- 機制與聯動結論：本工作區的 ARAM Helper 資料庫，只採集指定 Bilibili 創作者的實測內容。
+
+OCR 卡牌位置仍使用上游校準值。台服文字已納入匹配；若實際用戶端布局不同，需用台服三選一截圖重新校正位置。
+
+## 授權
+
+程式碼沿用上游 MIT 授權，統計資料為 CC BY-NC 4.0。詳見 [LICENSE](LICENSE) 與 [NOTICE.md](NOTICE.md)。
+
+本專案為非官方工具，與 Riot Games、騰訊無關。

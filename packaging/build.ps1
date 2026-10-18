@@ -1,24 +1,24 @@
-# 打包：PyInstaller 生成程序目录 → GUI 自检 → Inno Setup 安装版 + 便携版 ZIP + SHA256SUMS.txt。
+# 打包：PyInstaller 生成程式目錄 → GUI 自檢 → Inno Setup 安裝版 + 便攜版 ZIP + SHA256SUMS.txt。
 # 用法（PowerShell 7）：pwsh -NoProfile -File packaging/build.ps1 [-PythonExe <python>] [-InnoCompiler <ISCC.exe>]
-# 输出：build/release/AramHex-Setup-<版本>.exe、AramHex-Portable-<版本>.zip、SHA256SUMS.txt
+# 輸出：build/release/AramHexTW-Setup-<版本>.exe、AramHexTW-Portable-<版本>.zip、SHA256SUMS.txt
 param([string]$PythonExe, [string]$InnoCompiler)
 $ErrorActionPreference = 'Stop'
-$env:PYTHONUTF8 = '1'  # 控制台不是 UTF-8 时（如 GitHub 的 Windows 构建机）输出中文也不能崩
+$env:PYTHONUTF8 = '1'  # 控制檯不是 UTF-8 時（如 GitHub 的 Windows 構建機）輸出中文也不能崩
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 $py = if ($PythonExe) { (Get-Command $PythonExe).Source } else { Join-Path $root '.venv\Scripts\python.exe' }
-if (-not (Test-Path $py)) { throw "缺少 Python：先运行 python -m venv .venv 并安装 requirements-build.txt" }
+if (-not (Test-Path $py)) { throw "缺少 Python：先執行 python -m venv .venv 並安裝 requirements-build.txt" }
 & $py -m PyInstaller --version
 if ($LASTEXITCODE) { throw '缺少 PyInstaller：pip install -r requirements-build.txt' }
 
 $version = (& $py -c "import lolhex; print(lolhex.__version__)").Trim()
 Write-Host "版本 $version"
 if (-not (Test-Path (Join-Path $root 'lolhex\data\bundled\latest.json'))) {
-    throw '缺少内置统计数据：先运行 python scripts/update_data.py'
+    throw '缺少內建統計資料：先執行 python scripts/update_data.py'
 }
-& $py -c "from lolhex.data.public import Dataset, BUNDLED_DIR; d = Dataset(BUNDLED_DIR, 'bundled'); print('内置数据', d.patch, d.snapshot_at)"
-if ($LASTEXITCODE) { throw '内置统计数据校验失败' }
+& $py -c "from lolhex.data.public import Dataset, BUNDLED_DIR; d = Dataset(BUNDLED_DIR, 'bundled'); print('內建資料', d.patch, d.snapshot_at)"
+if ($LASTEXITCODE) { throw '內建統計資料校驗失敗' }
 
 $originalPath = $env:PATH
 $originalPythonPath = $env:PYTHONPATH
@@ -38,44 +38,44 @@ try {
     $env:PYTHONPATH = $originalPythonPath
     $env:PYINSTALLER_CONFIG_DIR = $originalPyinstallerConfig
 }
-if ($code) { throw 'PyInstaller 打包失败' }
-$dist = Join-Path $root 'build\dist\AramHex'
+if ($code) { throw 'PyInstaller 打包失敗' }
+$dist = Join-Path $root 'build\dist\AramHexTW'
 
-# 真实 Windows 窗口插件下跑一遍 Qt（QtCore/Gui/Widgets/Network），再跑一遍 OpenCV 和文字识别
+# 真實 Windows 視窗外掛下跑一遍 Qt（QtCore/Gui/Widgets/Network），再跑一遍 OpenCV 和文字識別
 $report = Join-Path $root 'build\gui-smoke.json'
 if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
-$smoke = Start-Process -FilePath (Join-Path $dist 'AramHex.exe') -ArgumentList @('--self-test-gui', ('"' + $report + '"')) -WindowStyle Hidden -PassThru
-if (-not $smoke.WaitForExit(180000)) { $smoke.Kill(); throw '自检超时' }
-if ($smoke.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw 'Qt GUI 自检失败，不生成安装包' }
+$smoke = Start-Process -FilePath (Join-Path $dist 'AramHexTW.exe') -ArgumentList @('--self-test-gui', ('"' + $report + '"')) -WindowStyle Hidden -PassThru
+if (-not $smoke.WaitForExit(180000)) { $smoke.Kill(); throw '自檢超時' }
+if ($smoke.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw 'Qt GUI 自檢失敗，不生成安裝包' }
 $gui = Get-Content -Raw -Encoding UTF8 -LiteralPath $report | ConvertFrom-Json
-if (-not $gui.success -or $gui.version -ne $version -or $gui.platform -ne 'windows' -or -not $gui.ocr_ok) { throw "自检结果不对（界面或文字识别）：$($gui | ConvertTo-Json -Compress)" }
-Write-Host "自检通过：Qt $($gui.qt)，文字识别读到「$($gui.ocr_text)」"
+if (-not $gui.success -or $gui.version -ne $version -or $gui.platform -ne 'windows' -or -not $gui.ocr_ok) { throw "自檢結果不對（介面或文字識別）：$($gui | ConvertTo-Json -Compress)" }
+Write-Host "自檢透過：Qt $($gui.qt)，文字識別讀到「$($gui.ocr_text)」"
 
 $iscc = @($InnoCompiler, (Join-Path $root '.tools\inno\ISCC.exe'), "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
           "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
     Where-Object { $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw '缺少 Inno Setup 6：winget install --id JRSoftware.InnoSetup -e' }
 & $iscc "/DAppVersion=$version" packaging\LolHex.iss
-if ($LASTEXITCODE) { throw 'Inno Setup 编译失败' }
+if ($LASTEXITCODE) { throw 'Inno Setup 編譯失敗' }
 
 $out = Join-Path $root 'build\release'
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Path $out | Out-Null
-$setup = "AramHex-Setup-$version.exe"
+$setup = "AramHexTW-Setup-$version.exe"
 Copy-Item (Join-Path $root "build\installer\$setup") (Join-Path $out $setup)
 
-# 便携版：同一份程序目录 + portable.txt（有它时配置、日志、数据都放在程序目录的 userdata 下）
-$stage = Join-Path $root "build\portable\AramHex-$version"
+# 便攜版：同一份程式目錄 + portable.txt（有它時配置、日誌、資料都放在程式目錄的 userdata 下）
+$stage = Join-Path $root "build\portable\AramHexTW-$version"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item -Recurse (Join-Path $dist '*') $stage
 Set-Content -LiteralPath (Join-Path $stage 'portable.txt') -Encoding utf8 -Value @'
-这是便携版：配置、日志和下载的数据都放在本目录的 userdata 文件夹里，不写系统目录。
-删除整个文件夹即可卸载。有新版本时助手会提示，请到 GitHub 下载新的便携版替换。
+這是便攜版：配置、日誌和下載的資料都放在本目錄的 userdata 資料夾裡，不寫系統目錄。
+刪除整個資料夾即可解除安裝。有新版本時助手會提示，請到 GitHub 下載新的便攜版替換。
 https://github.com/czgreat/aramhex/releases
 '@
 Copy-Item (Join-Path $root 'LICENSE') $stage
-$zip = "AramHex-Portable-$version.zip"
+$zip = "AramHexTW-Portable-$version.zip"
 Compress-Archive -Path $stage -DestinationPath (Join-Path $out $zip) -CompressionLevel Optimal
 
 $sums = foreach ($name in @($setup, $zip)) {

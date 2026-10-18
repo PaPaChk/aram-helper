@@ -1,4 +1,4 @@
-"""合成海克斯三选一画面，用于在没有游戏截图时测试识别流程。"""
+"""合成海克斯三選一畫面，用於在沒有遊戲截圖時測試識別流程。"""
 
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ def fonts_available() -> bool:
 
 
 def render_offer(names: list[str | None], size=(3840, 2160), seed: int = 0,
-                 desc: str = "获得1个随机强化符文。") -> np.ndarray:
-    """返回 BGR 图。names 中 None 表示该位置不画卡。卡片按屏幕中心对称排布。"""
+                 desc: str = "獲得1個隨機強化符文。") -> np.ndarray:
+    """返回 BGR 圖。names 中 None 表示該位置不畫卡。卡片按螢幕中心對稱排布。"""
     W, H = size
     rng = np.random.default_rng(seed)
     base = rng.integers(10, 70, (H, W, 3), dtype=np.uint8)
@@ -34,7 +34,7 @@ def render_offer(names: list[str | None], size=(3840, 2160), seed: int = 0,
     s = H / 1080
     title = _font(FONT_BOLD, int(26 * s))
     small = _font(FONT, int(14 * s))
-    # 卡距、标题高度按国服 4K 实机校准结果（标题中心约 0.41H，左右卡距约 369×s）
+    # 卡距、標題高度按國服 4K 實機校準結果（標題中心約 0.41H，左右卡距約 369×s）
     card_w, card_h, gap = int(250 * s), int(400 * s), int(369 * s)
     cx0 = W // 2
     for i, n in enumerate(names):

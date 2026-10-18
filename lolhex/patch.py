@@ -1,20 +1,20 @@
-"""增量更新：只下载新版本里变了的几个文件（通常是程序本体和内置数据，约 10–20MB），不用重下完整安装包。
+"""增量更新：只下載新版本里變了的幾個檔案（通常是程式本體和內建資料，約 10–20MB），不用重下完整安裝包。
 
-发版时 GitHub Actions 把新版本的文件清单和"会变的文件"推到本仓库的 updates 分支：
-    manifest.json        {"schema_version": 1, "version", "encoding": "gzip", "files": {相对路径: {sha256, size}},
-                          "patchable": [相对路径]}
-    files/<相对路径>.gz   patchable 里的文件（AramHex.exe、_internal/base_library.zip、_internal/lolhex/**）的 gzip 压缩版。
-                          jsDelivr 不给下 .exe（403），压缩后就可以；SHA-256 校验的是解压后的原文件。
-    files/<相对路径>      原文件，给 1.0.3（只认原文件）从 GitHub 下载用
-GitHub 和 jsDelivr 都能读这个分支，国内连不上 GitHub 时走 jsDelivr（单个文件 ≤20MB，整个分支 ≤150MB）。
+發版時 GitHub Actions 把新版本的檔案清單和"會變的檔案"推到本倉庫的 updates 分支：
+    manifest.json        {"schema_version": 1, "version", "encoding": "gzip", "files": {相對路徑: {sha256, size}},
+                          "patchable": [相對路徑]}
+    files/<相對路徑>.gz   patchable 裡的檔案（AramHex.exe、_internal/base_library.zip、_internal/lolhex/**）的 gzip 壓縮版。
+                          jsDelivr 不給下 .exe（403），壓縮後就可以；SHA-256 校驗的是解壓後的原檔案。
+    files/<相對路徑>      原檔案，給 1.0.3（只認原檔案）從 GitHub 下載用
+GitHub 和 jsDelivr 都能讀這個分支，國內連不上 GitHub 時走 jsDelivr（單個檔案 ≤20MB，整個分支 ≤150MB）。
 
-程序这边：
-1. 读清单，确认版本号就是要更新到的版本（jsDelivr 有缓存，旧清单就换下一个地址）；
-2. 和本机文件逐个比 SHA-256。变了的文件都在 patchable 里就能增量更新；
-   第三方库也变了（例如升级 Qt）就不行，退回下载完整安装包；
-3. 下载变了的文件到程序目录下的 _update_new，逐个校验；
-4. 助手退出后，由一个 PowerShell 小脚本替换文件：先把旧文件挪到 _update_old，任何一步失败就全部挪回去，
-   最后重新打开助手。安装版和便携版都能用（程序目录都在用户目录下，不需要管理员权限）。
+程式這邊：
+1. 讀清單，確認版本號就是要更新到的版本（jsDelivr 有快取，舊清單就換下一個地址）；
+2. 和本機檔案逐個比 SHA-256。變了的檔案都在 patchable 裡就能增量更新；
+   第三方庫也變了（例如升級 Qt）就不行，退回下載完整安裝包；
+3. 下載變了的檔案到程式目錄下的 _update_new，逐個校驗；
+4. 助手退出後，由一個 PowerShell 小指令碼替換檔案：先把舊檔案挪到 _update_old，任何一步失敗就全部挪回去，
+   最後重新開啟助手。安裝版和便攜版都能用（程式目錄都在使用者目錄下，不需要管理員許可權）。
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ JSD_HOSTS = ("fastly.jsdelivr.net", "gcore.jsdelivr.net", "cdn.jsdelivr.net")
 
 
 def tag_for(version: str) -> str:
-    """发版时给这一版的增量更新文件打的 tag。jsDelivr 对分支名的解析会缓存好几个小时（推送后还拿到旧清单），
-    按 tag 取则立即是新的，所以下载一律按 tag。"""
+    """發版時給這一版的增量更新檔案打的 tag。jsDelivr 對分支名的解析會快取好幾個小時（推送後還拿到舊清單），
+    按 tag 取則立即是新的，所以下載一律按 tag。"""
     return f"updates-v{version}"
 
 
@@ -52,13 +52,13 @@ def sources_for(version: str) -> list[str]:
     extra = [u.replace("{version}", version).rstrip("/") for u in cloud.mirrors("update")]
     return (extra + [f"{MIRROR}/{version}", f"https://raw.githubusercontent.com/{GITHUB_REPO}/{tag}"]
             + [f"https://{host}/gh/{GITHUB_REPO}@{tag}" for host in JSD_HOSTS]
-            # 分支地址兜底（1.0.3 发布时还没有 tag）；清单版本对不上会被跳过
+            # 分支地址兜底（1.0.3 釋出時還沒有 tag）；清單版本對不上會被跳過
             + [f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}"]
             + [f"https://{host}/gh/{GITHUB_REPO}@{BRANCH}" for host in JSD_HOSTS])
 
 
-SOURCES = sources_for("0")  # 只用作默认值的形状；实际按要更新到的版本取 sources_for(version)
-# 会随我们发版变化的文件；其余都是第三方库（Qt、OpenCV、识别模型……），变了就要完整安装包
+SOURCES = sources_for("0")  # 只用作預設值的形狀；實際按要更新到的版本取 sources_for(version)
+# 會隨我們發版變化的檔案；其餘都是第三方庫（Qt、OpenCV、識別模型……），變了就要完整安裝包
 PATCHABLE_PREFIXES = ("AramHex.exe", "_internal/base_library.zip", "_internal/lolhex/")
 STAGING, BACKUP = "_update_new", "_update_old"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{1107079E-6C48-46FD-938D-04B1C3EA9A72}_is1"
@@ -66,12 +66,12 @@ HEADERS = {"User-Agent": "aramhex"}
 
 
 class NeedFullInstall(Exception):
-    """这次更新不能增量完成（第三方库变了、清单拿不到等），要下载完整安装包。"""
+    """這次更新不能增量完成（第三方庫變了、清單拿不到等），要下載完整安裝包。"""
 
 
 def is_patchable(rel: str) -> bool:
-    # 第三方库的 *.dist-info/ 是安装记录（RECORD 等），每次重新 pip install 内容都会变，但不影响运行；
-    # 一共只有约 0.3MB，也放进增量更新，免得因为它们就要重下完整安装包
+    # 第三方庫的 *.dist-info/ 是安裝記錄（RECORD 等），每次重新 pip install 內容都會變，但不影響執行；
+    # 一共只有約 0.3MB，也放進增量更新，免得因為它們就要重下完整安裝包
     return (rel == PATCHABLE_PREFIXES[0] or rel == PATCHABLE_PREFIXES[1] or rel.startswith(PATCHABLE_PREFIXES[2])
             or ".dist-info/" in rel)
 
@@ -85,7 +85,7 @@ def sha256_file(path: Path) -> str:
 
 
 def build_manifest(root: Path, version: str) -> dict:
-    """发版用：扫描打包好的程序目录，生成清单。"""
+    """發版用：掃描打包好的程式目錄，生成清單。"""
     root = Path(root)
     files = {}
     for p in sorted(root.rglob("*")):
@@ -98,17 +98,17 @@ def build_manifest(root: Path, version: str) -> dict:
 
 def check_manifest(m: dict, version: str) -> dict:
     if not isinstance(m, dict) or m.get("schema_version") != 1 or m.get("version") != version:
-        raise NeedFullInstall(f"更新清单不是 {version} 的")
+        raise NeedFullInstall(f"更新清單不是 {version} 的")
     for rel in m.get("files") or {}:
         if rel.startswith(("/", "\\")) or ".." in rel.split("/") or rel.startswith((STAGING, BACKUP)):
-            raise NeedFullInstall(f"更新清单里有不合法的路径：{rel}")
+            raise NeedFullInstall(f"更新清單裡有不合法的路徑：{rel}")
     if not set(m.get("patchable") or []) <= set(m.get("files") or {}):
-        raise NeedFullInstall("更新清单不完整")
+        raise NeedFullInstall("更新清單不完整")
     return m
 
 
 def fetch_manifest(version: str, sources=SOURCES, timeout: float = 15) -> tuple[dict, str]:
-    """依次试每个地址，返回 (清单, 地址)。版本对不上（如 jsDelivr 缓存还是旧的）就换下一个。"""
+    """依次試每個地址，返回 (清單, 地址)。版本對不上（如 jsDelivr 快取還是舊的）就換下一個。"""
     errors = []
     for base in sources:
         try:
@@ -117,11 +117,11 @@ def fetch_manifest(version: str, sources=SOURCES, timeout: float = 15) -> tuple[
             return check_manifest(r.json(), version), base
         except (requests.RequestException, ValueError, NeedFullInstall) as e:
             errors.append(f"{base.split('/')[2]}：{e}")
-    raise NeedFullInstall("拿不到更新清单：" + "；".join(errors))
+    raise NeedFullInstall("拿不到更新清單：" + "；".join(errors))
 
 
 def plan(manifest: dict, root: Path) -> tuple[list[str], list[str]]:
-    """和本机文件比较，返回 (要下载的文件, 要删掉的文件)。有第三方库变了就抛 NeedFullInstall。"""
+    """和本機檔案比較，返回 (要下載的檔案, 要刪掉的檔案)。有第三方庫變了就拋 NeedFullInstall。"""
     root = Path(root)
     files, patchable = manifest["files"], set(manifest["patchable"])
     changed = []
@@ -130,7 +130,7 @@ def plan(manifest: dict, root: Path) -> tuple[list[str], list[str]]:
         if p.is_file() and p.stat().st_size == f["size"] and sha256_file(p) == f["sha256"]:
             continue
         if rel not in patchable:
-            raise NeedFullInstall(f"{rel} 也变了，要用完整安装包")
+            raise NeedFullInstall(f"{rel} 也變了，要用完整安裝包")
         changed.append(rel)
     stale = [p.relative_to(root).as_posix() for p in (root / "_internal" / "lolhex").rglob("*")
              if p.is_file() and p.relative_to(root).as_posix() not in files] if (root / "_internal" / "lolhex").is_dir() else []
@@ -139,16 +139,16 @@ def plan(manifest: dict, root: Path) -> tuple[list[str], list[str]]:
 
 def download(manifest: dict, changed: list[str], root: Path, sources=SOURCES, progress=None,
              timeout: float = 30) -> Path:
-    """下载变了的文件到 <root>/_update_new，逐个校验 SHA-256。返回暂存目录。"""
+    """下載變了的檔案到 <root>/_update_new，逐個校驗 SHA-256。返回暫存目錄。"""
     from .data import http
     staging = Path(root) / STAGING
     shutil.rmtree(staging, ignore_errors=True)
     gz = manifest.get("encoding") == "gzip"
     packed = manifest.get("packed") or {}
-    # 进度按实际要下载的字节算：有压缩版就按压缩后的大小（清单里有记录时）
+    # 進度按實際要下載的位元組算：有壓縮版就按壓縮後的大小（清單裡有記錄時）
     share = {rel: (packed.get(rel) if gz and packed.get(rel) else manifest["files"][rel]["size"]) for rel in changed}
     total = sum(share.values())
-    finished = 0  # 已经下完的文件的字节数
+    finished = 0  # 已經下完的檔案的位元組數
 
     def report(n_in_file):
         if progress:
@@ -157,7 +157,7 @@ def download(manifest: dict, changed: list[str], root: Path, sources=SOURCES, pr
         for rel in changed:
             want = manifest["files"][rel]
             body, errors = None, []
-            # 优先下压缩版（.gz）：jsDelivr 不给下 .exe，压缩后也更小；没有压缩版的旧清单下原文件
+            # 優先下壓縮版（.gz）：jsDelivr 不給下 .exe，壓縮後也更小；沒有壓縮版的舊清單下原檔案
             suffixes = [".gz", ""] if gz else [""]
             for base in sources:
                 for suffix in suffixes:
@@ -171,7 +171,7 @@ def download(manifest: dict, changed: list[str], root: Path, sources=SOURCES, pr
                                          on_bytes=on_bytes)
                         data = gzip.decompress(raw) if suffix else raw
                         if len(data) != want["size"] or hashlib.sha256(data).hexdigest() != want["sha256"]:
-                            raise ValueError("校验不对")
+                            raise ValueError("校驗不對")
                         body = data
                         finished += share[rel]
                         break
@@ -180,7 +180,7 @@ def download(manifest: dict, changed: list[str], root: Path, sources=SOURCES, pr
                 if body is not None:
                     break
             if body is None:
-                raise NeedFullInstall(f"{rel} 下载失败：" + "；".join(errors))
+                raise NeedFullInstall(f"{rel} 下載失敗：" + "；".join(errors))
             out = staging / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(body)
@@ -193,8 +193,8 @@ def download(manifest: dict, changed: list[str], root: Path, sources=SOURCES, pr
 
 def apply_script(root: Path, changed: list[str], stale: list[str], pid: int, version: str,
                  relaunch: str | None) -> str:
-    """生成替换文件的 PowerShell 脚本：等助手退出 → 旧文件挪到 _update_old → 新文件挪进来 →
-    删掉新版本里没有的旧文件；任何一步失败就全部挪回去。最后重新打开助手。"""
+    """生成替換檔案的 PowerShell 指令碼：等助手退出 → 舊檔案挪到 _update_old → 新檔案挪進來 →
+    刪掉新版本里沒有的舊檔案；任何一步失敗就全部挪回去。最後重新開啟助手。"""
     def q(s: str) -> str:
         return "'" + str(s).replace("'", "''") + "'"
     lines = [
@@ -204,13 +204,13 @@ def apply_script(root: Path, changed: list[str], stale: list[str], pid: int, ver
         f"$old = Join-Path $root {q(BACKUP)}",
         f"$changed = @({', '.join(q(r) for r in changed)})",
         f"$stale = @({', '.join(q(r) for r in stale)})",
-        # 等助手退出；30 秒还没退（例如卡在某个网络请求上）就结束它——只结束我们自己的这个进程
+        # 等助手退出；30 秒還沒退（例如卡在某個網路請求上）就結束它——只結束我們自己的這個程序
         f"$pid0 = {int(pid)}",
         "try { Wait-Process -Id $pid0 -Timeout 30 -ErrorAction Stop } catch { }",
         "if (Get-Process -Id $pid0 -ErrorAction SilentlyContinue) {"
         " Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2 }",
         "Start-Sleep -Milliseconds 500",
-        # 文件刚释放时偶尔还被占着（杀毒软件扫描等）：每次挪文件最多重试 10 次
+        # 檔案剛釋放時偶爾還被佔著（防毒軟體掃描等）：每次挪檔案最多重試 10 次
         "function Move-Retry($from, $to) { for ($i = 0; $i -lt 10; $i++) {"
         " try { Move-Item -LiteralPath $from $to -Force -ErrorAction Stop; return } catch { if ($i -eq 9) { throw }"
         " Start-Sleep -Seconds 1 } } }",
@@ -231,7 +231,7 @@ def apply_script(root: Path, changed: list[str], stale: list[str], pid: int, ver
         "    New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null",
         "    Move-Retry (Join-Path $new $rel) $dst",
         "  }",
-        # 「应用」列表里的版本号：现在的安装包只装给当前用户（HKCU）；早期可能选过"所有用户"（HKLM，没管理员权限改不了，忽略）
+        # 「應用」列表裡的版本號：現在的安裝包只裝給當前使用者（HKCU）；早期可能選過"所有使用者"（HKLM，沒管理員許可權改不了，忽略）
         f"  foreach ($hive in 'HKCU:\\', 'HKLM:\\') {{ try {{ $k = $hive + {q(UNINSTALL_KEY)}; "
         f"if (Test-Path $k) {{ Set-ItemProperty -Path $k -Name DisplayVersion -Value {q(version)} -ErrorAction Stop }} }} "
         "catch { } }",
@@ -254,17 +254,17 @@ def apply_script(root: Path, changed: list[str], stale: list[str], pid: int, ver
 
 def launch_apply(root: Path, changed: list[str], stale: list[str], version: str,
                  relaunch: str | None = None, pid: int | None = None, wait: bool = False) -> Path:
-    """写出并启动替换脚本。调用后助手应当马上退出，让出文件。"""
+    """寫出並啟動替換指令碼。呼叫後助手應當馬上退出，讓出檔案。"""
     script = Path(tempfile.gettempdir()) / f"aramhex-apply-{version}-{os.getpid()}.ps1"
     body = apply_script(root, changed, stale, pid or os.getpid(), version, relaunch)
-    script.write_text(body, encoding="utf-8-sig")  # Windows PowerShell 5.1 要 BOM 才按 UTF-8 读中文路径
+    script.write_text(body, encoding="utf-8-sig")  # Windows PowerShell 5.1 要 BOM 才按 UTF-8 讀中文路徑
     args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", str(script)]
     if wait:
         subprocess.run(args, check=False, timeout=180)
     else:
-        # 不能用 DETACHED_PROCESS：PowerShell 没有控制台时会直接退出。用 CREATE_NO_WINDOW 隐藏窗口，
-        # 新进程组让它在助手退出后继续运行
+        # 不能用 DETACHED_PROCESS：PowerShell 沒有控制檯時會直接退出。用 CREATE_NO_WINDOW 隱藏視窗，
+        # 新程序組讓它在助手退出後繼續執行
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen(args, close_fds=True, creationflags=flags, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -272,7 +272,7 @@ def launch_apply(root: Path, changed: list[str], stale: list[str], version: str,
 
 
 def take_failure(root: Path | None = None) -> str | None:
-    """上次增量更新没装上（已还原成旧版本）时返回原因，并清理留下的临时目录；没有返回 None。"""
+    """上次增量更新沒裝上（已還原成舊版本）時返回原因，並清理留下的臨時目錄；沒有返回 None。"""
     root = root or install_root()
     if root is None:
         return None
@@ -289,16 +289,16 @@ def take_failure(root: Path | None = None) -> str | None:
 
 
 def install_root() -> Path | None:
-    """打包后的程序目录；源码运行时没有，不做增量更新。"""
+    """打包後的程式目錄；原始碼執行時沒有，不做增量更新。"""
     return program_dir() if getattr(sys, "frozen", False) else None
 
 
-RANK_MIN_BYTES = 3 * 1024 * 1024  # 要下载的超过这么多才测速挑线路
+RANK_MIN_BYTES = 3 * 1024 * 1024  # 要下載的超過這麼多才測速挑線路
 
 
 def rank_by_speed(sources: list[str], rel: str, sample: int = 256 * 1024, timeout: float = 6) -> list[str]:
-    """几条线路同时下载同一个文件的前 256KB，按速度从快到慢排。连不上的排最后。
-    实测 172 上：GitHub 32KB/s，jsDelivr 的 gcore 节点 207KB/s——不能"GitHub 能连上就一直用它"。"""
+    """幾條線路同時下載同一個檔案的前 256KB，按速度從快到慢排。連不上的排最後。
+    實測 172 上：GitHub 32KB/s，jsDelivr 的 gcore 節點 207KB/s——不能"GitHub 能連上就一直用它"。"""
     import time
     from concurrent.futures import ThreadPoolExecutor
 
@@ -321,38 +321,38 @@ def rank_by_speed(sources: list[str], rel: str, sample: int = 256 * 1024, timeou
     with ThreadPoolExecutor(max_workers=len(sources)) as pool:
         speeds = list(pool.map(probe, sources))
     order = sorted(range(len(sources)), key=lambda i: -speeds[i])
-    log.info("线路测速（KB/s）：%s", "，".join(f"{sources[i].split('/')[2]} {speeds[i] / 1024:.0f}" for i in order))
+    log.info("線路測速（KB/s）：%s", "，".join(f"{sources[i].split('/')[2]} {speeds[i] / 1024:.0f}" for i in order))
     return [sources[i] for i in order]
 
 
 def prepare(version: str, progress=None, root: Path | None = None, sources=None,
             phase=None) -> tuple[list[str], list[str]]:
-    """查清单、比较、下载。成功返回 (变了的文件, 要删的文件)，下一步调 launch_apply；不能增量就抛 NeedFullInstall。"""
+    """查清單、比較、下載。成功返回 (變了的檔案, 要刪的檔案)，下一步調 launch_apply；不能增量就拋 NeedFullInstall。"""
     sources = sources or sources_for(version)
     root = root or install_root()
     if root is None:
-        raise NeedFullInstall("源码运行，不做增量更新")
-    say = phase or (lambda text: None)  # 界面显示当前在做什么
-    say("检查更新文件…")
+        raise NeedFullInstall("原始碼執行，不做增量更新")
+    say = phase or (lambda text: None)  # 介面顯示當前在做什麼
+    say("檢查更新檔案…")
     manifest, base = fetch_manifest(version, sources)
-    say("比对本机文件…")
+    say("比對本機檔案…")
     changed, stale = plan(manifest, root)
     if not changed and not stale:
-        raise NeedFullInstall("本机文件已经和新版本一样")
-    log.info("增量更新到 %s：%d 个文件要换（%.1f MB），清单来自 %s", version, len(changed),
+        raise NeedFullInstall("本機檔案已經和新版本一樣")
+    log.info("增量更新到 %s：%d 個檔案要換（%.1f MB），清單來自 %s", version, len(changed),
              sum(manifest["files"][r]["size"] for r in changed) / 1e6, base)
-    say("下载更新…")
+    say("下載更新…")
     order = [base] + [s for s in sources if s != base]
     size = sum(manifest["files"][r]["size"] for r in changed)
-    if len(order) > 1 and changed and size >= RANK_MIN_BYTES:  # 小更新直接用拿到清单的线路，测速反而更慢
-        say("挑选最快的下载线路…")
+    if len(order) > 1 and changed and size >= RANK_MIN_BYTES:  # 小更新直接用拿到清單的線路，測速反而更慢
+        say("挑選最快的下載線路…")
         order = rank_by_speed(order, max(changed, key=lambda r: manifest["files"][r]["size"]))
     download(manifest, changed, root, order, progress)
     return changed, stale
 
 
 def main(argv=None) -> int:
-    """发版用：python -m lolhex.patch <程序目录> <版本> <输出目录>，生成 updates 分支的内容。"""
+    """發版用：python -m lolhex.patch <程式目錄> <版本> <輸出目錄>，生成 updates 分支的內容。"""
     argv = sys.argv[1:] if argv is None else argv
     root, version, out = Path(argv[0]), argv[1], Path(argv[2])
     m = {**build_manifest(root, version), "encoding": "gzip"}
@@ -364,14 +364,14 @@ def main(argv=None) -> int:
         shutil.copy2(root / rel, dst)
         gz = gzip.compress((root / rel).read_bytes(), 9, mtime=0)
         if len(gz) > 20 * 1024 * 1024:
-            raise SystemExit(f"{rel} 压缩后仍超过 jsDelivr 的 20MB 上限")
+            raise SystemExit(f"{rel} 壓縮後仍超過 jsDelivr 的 20MB 上限")
         dst.with_name(dst.name + ".gz").write_bytes(gz)
-        m.setdefault("packed", {})[rel] = len(gz)  # 压缩后大小：程序据此算下载进度
+        m.setdefault("packed", {})[rel] = len(gz)  # 壓縮後大小：程式據此算下載進度
         packed += len(gz)
     (out / "manifest.json").write_text(json.dumps(m, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
                                        encoding="utf-8")
     size = sum(m["files"][r]["size"] for r in m["patchable"])
-    print(f"updates 分支内容：{len(m['patchable'])} 个文件，原始 {size / 1e6:.1f} MB，压缩后 {packed / 1e6:.1f} MB → {out}")
+    print(f"updates 分支內容：{len(m['patchable'])} 個檔案，原始 {size / 1e6:.1f} MB，壓縮後 {packed / 1e6:.1f} MB → {out}")
     return 0
 
 

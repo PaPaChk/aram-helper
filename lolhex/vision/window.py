@@ -1,4 +1,4 @@
-"""查找游戏 / 客户端窗口并取得客户区在屏幕上的物理像素坐标（Win32，只读）。"""
+"""查詢遊戲 / 客戶端視窗並取得客戶區在螢幕上的物理畫素座標（Win32，只讀）。"""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def client_rect(hwnd: int) -> Rect | None:
     return Rect(pt.x, pt.y, w, h)
 
 
-# 贴在客户端/游戏上的自己的悬浮小窗：点它时前台变成它，但画面上客户端还在，按客户端仍在前台算
+# 貼在客戶端/遊戲上的自己的懸浮小窗：點它時前臺變成它，但畫面上客戶端還在，按客戶端仍在前臺算
 _companions: set[int] = set()
 
 
@@ -91,12 +91,12 @@ def is_foreground(hwnd: int) -> bool:
 
 
 _overlay_windows: set[int] = set()
-_capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 调试截图时让悬浮层可见
+_capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 除錯截圖時讓懸浮層可見
 
 
 def exclude_from_capture(hwnd: int) -> None:
-    """让自己的悬浮窗不出现在截图和录屏里（Win10 2004+）：一是避免识别到自己画的字，
-    二是录视频、直播时画面干净。设置里打开"录屏、截图时显示浮窗"就不排除。"""
+    """讓自己的懸浮窗不出現在截圖和錄屏裡（Win10 2004+）：一是避免識別到自己畫的字，
+    二是錄影片、直播時畫面乾淨。設定裡開啟"錄屏、截圖時顯示浮窗"就不排除。"""
     if hwnd:
         _overlay_windows.add(int(hwnd))
         _apply_affinity(int(hwnd))
@@ -112,7 +112,7 @@ def _apply_affinity(hwnd: int) -> None:
 
 
 def set_capture_allowed(allowed: bool) -> None:
-    """录屏、截图时是否显示浮窗；对已经打开的浮窗立即生效。"""
+    """錄屏、截圖時是否顯示浮窗；對已經開啟的浮窗立即生效。"""
     global _capture_allowed
     _capture_allowed = bool(allowed) or bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))
     for hwnd in list(_overlay_windows):
@@ -124,8 +124,8 @@ def capture_allowed() -> bool:
 
 
 def give_focus(hwnd: int) -> None:
-    """把前台（键盘焦点）还给游戏或客户端窗口。只有本进程当前在前台时 Windows 才允许，
-    所以要在点了浮窗、浮窗刚被激活之后调用。不发送任何按键或鼠标。"""
+    """把前臺（鍵盤焦點）還給遊戲或客戶端視窗。只有本程序當前在前臺時 Windows 才允許，
+    所以要在點了浮窗、浮窗剛被啟用之後呼叫。不傳送任何按鍵或滑鼠。"""
     if not IS_WINDOWS or not hwnd:
         return
     u = ctypes.windll.user32
@@ -134,7 +134,7 @@ def give_focus(hwnd: int) -> None:
 
 
 def left_button_clicked() -> bool:
-    """自上次调用以来左键是否按下过（GetAsyncKeyState 低位），只读输入状态。"""
+    """自上次呼叫以來左鍵是否按下過（GetAsyncKeyState 低位），只讀輸入狀態。"""
     if not IS_WINDOWS:
         return False
     return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x0001)

@@ -1,4 +1,4 @@
-"""游戏内浮窗：点完把焦点还给游戏，展开后鼠标离开一段时间自动收起（无界面模式运行）。"""
+"""遊戲內浮窗：點完把焦點還給遊戲，展開後滑鼠離開一段時間自動收起（無介面模式執行）。"""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def test_click_gives_focus_back_to_game(panel):
 def test_manual_open_hides_after_mouse_away(panel):
     p = panel.p
     p.btn.click()
-    p.auto_hide("ingame")              # 开始计时
+    p.auto_hide("ingame")              # 開始計時
     _wait(panel, panel.overlay.AUTO_HIDE_SECONDS - 1)
     p.auto_hide("ingame")
     assert p.expanded
@@ -78,12 +78,12 @@ def test_hover_resets_timer(panel):
     p.auto_hide("ingame")
     _wait(panel, panel.overlay.AUTO_HIDE_SECONDS - 1)
     panel.cursor[0] = p.frameGeometry().center()
-    p.auto_hide("ingame")              # 鼠标在浮窗上：不收
+    p.auto_hide("ingame")              # 滑鼠在浮窗上：不收
     panel.cursor[0] = QPoint(-500, -500)
-    p.auto_hide("ingame")              # 离开：重新开始计时（实际每 250ms 检查一次）
+    p.auto_hide("ingame")              # 離開：重新開始計時（實際每 250ms 檢查一次）
     _wait(panel, panel.overlay.AUTO_HIDE_SECONDS - 1)
     p.auto_hide("ingame")
-    assert p.expanded                  # 离开后重新计时
+    assert p.expanded                  # 離開後重新計時
     _wait(panel, 2)
     p.auto_hide("ingame")
     assert not p.expanded
@@ -96,7 +96,7 @@ def test_champ_select_auto_open_waits_for_hover(panel):
     for _ in range(3):
         _wait(panel, panel.overlay.AUTO_HIDE_SECONDS)
         p.auto_hide("client")
-    assert p.expanded                  # 没碰过就一直开着，方便看胜率
+    assert p.expanded                  # 沒碰過就一直開著，方便看勝率
     panel.cursor[0] = p.frameGeometry().center()
     p.auto_hide("client")
     panel.cursor[0] = QPoint(-500, -500)

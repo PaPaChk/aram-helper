@@ -1,4 +1,4 @@
-"""开机自启：写入 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run（当前用户，不需要管理员）。"""
+"""開機自啟：寫入 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run（當前使用者，不需要管理員）。"""
 
 from __future__ import annotations
 

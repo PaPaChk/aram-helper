@@ -1,23 +1,26 @@
-# 第三方组件与数据
+# 第三方元件與資料
 
-安装包和便携版里带了下面这些组件，各自遵循自己的协议：
+安裝包和便攜版裡帶了下面這些元件，各自遵循自己的協議：
 
-| 组件 | 用途 | 协议 |
+| 元件 | 用途 | 協議 |
 |---|---|---|
-| [Qt for Python (PySide6)](https://www.qt.io/qt-for-python) | 界面 | LGPL-3.0（以独立的动态库形式随程序分发，可自行替换） |
-| [RapidOCR](https://github.com/RapidAI/RapidOCR) 及其 PaddleOCR 模型 | 文字识别 | Apache-2.0 |
-| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | 运行识别模型 | MIT |
-| [OpenCV](https://opencv.org/) | 图像处理 | Apache-2.0 |
-| [NumPy](https://numpy.org/) | 计算 | BSD-3-Clause |
-| [Pillow](https://python-pillow.org/) | 图像处理 | MIT-CMU |
-| [RapidFuzz](https://github.com/rapidfuzz/RapidFuzz) | 名称模糊匹配 | MIT |
-| [python-mss](https://github.com/BoboTiG/python-mss) | 截屏 | MIT |
-| [Requests](https://requests.readthedocs.io/) | 网络请求 | Apache-2.0 |
-| [PyInstaller](https://pyinstaller.org/) | 打包 | GPL-2.0（带 bootloader 例外，不影响本程序的协议） |
-| [Inno Setup](https://jrsoftware.org/isinfo.php) | 安装程序 | Inno Setup License |
+| [Qt for Python (PySide6)](https://www.qt.io/qt-for-python) | 介面 | LGPL-3.0（以獨立的動態庫形式隨程式分發，可自行替換） |
+| [RapidOCR](https://github.com/RapidAI/RapidOCR) 及其 PaddleOCR 模型 | 文字識別 | Apache-2.0 |
+| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | 執行識別模型 | MIT |
+| [OpenCV](https://opencv.org/) | 影象處理 | Apache-2.0 |
+| [NumPy](https://numpy.org/) | 計算 | BSD-3-Clause |
+| [Pillow](https://python-pillow.org/) | 影象處理 | MIT-CMU |
+| [RapidFuzz](https://github.com/rapidfuzz/RapidFuzz) | 名稱模糊匹配 | MIT |
+| [python-mss](https://github.com/BoboTiG/python-mss) | 截圖 | MIT |
+| [Requests](https://requests.readthedocs.io/) | 網路請求 | Apache-2.0 |
+| [PyInstaller](https://pyinstaller.org/) | 打包 | GPL-2.0（帶 bootloader 例外，不影響本程式的協議） |
+| [Inno Setup](https://jrsoftware.org/isinfo.php) | 安裝程式 | Inno Setup License |
+| [OpenCC](https://github.com/BYVoid/OpenCC) | 簡繁轉換 | Apache-2.0 |
 
-数据：
-- `lolhex/data/bundled/`：自采统计数据，来自 [czgreat/aramhex-data](https://github.com/czgreat/aramhex-data)，协议为 CC BY-NC 4.0。
-- `lolhex/data/hero_aliases.json`：英雄别名，整理自 Hexdata（hexdata.com.cn）。
-- `lolhex/data/hero_nicknames.json`：网上常见的英雄外号，人工整理。
-- 运行时从腾讯官方公开接口（game.gtimg.cn、mlol.qt.qq.com）获取英雄、海克斯、装备资料以及官方出装和加点，从 CommunityDragon 补全个别海克斯的中文名。这些数据不随程序分发，版权归原权利人所有。
+資料：
+- `lolhex/data/bundled/`：自採統計資料，來自 [czgreat/aramhex-data](https://github.com/czgreat/aramhex-data)，協議為 CC BY-NC 4.0。此資料樣本來自國服，介面標示為「國服樣本」。
+- `lolhex/data/bundled/tw-catalog.json`：台服英雄、增幅與裝備名稱，來自 Riot CommunityDragon zh_TW 靜態資料，隨台服版分發。
+- `lolhex/data/hero_aliases.json`：英雄別名，整理自 Hexdata（hexdata.com.cn）。
+- `lolhex/data/hero_nicknames.json`：網上常見的英雄外號，人工整理。
+- 執行時從騰訊官方公開介面（game.gtimg.cn、mlol.qt.qq.com）獲取官方出裝、加點與勝率所需靜態資料。國服名稱會保留為搜尋別名，顯示名稱由 tw-catalog.json 覆寫為台服譯名。
+- 統計勝率與官方靜態資料的版權歸原權利人所有；本專案不宣稱與 Riot Games 或騰訊有官方關係。

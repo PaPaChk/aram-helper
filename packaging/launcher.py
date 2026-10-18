@@ -1,7 +1,7 @@
-"""打包后的程序入口（PyInstaller）。
+"""打包後的程式入口（PyInstaller）。
 
-启动失败时（文件坏了、更新没装完整等）不弹英文的 "Unhandled exception"，改成中文提示，
-引导去官网下载安装包覆盖安装；错误写进 crash.log 方便排查。这里尽量少依赖程序本身，程序坏了也能弹出来。
+啟動失敗時（檔案壞了、更新沒裝完整等）不彈英文的 "Unhandled exception"，改成中文提示，
+引導去官網下載安裝包覆蓋安裝；錯誤寫進 crash.log 方便排查。這裡儘量少依賴程式本身，程式壞了也能彈出來。
 """
 
 import os
@@ -13,7 +13,7 @@ DOWNLOAD_PAGE = "https://aramhex.com/#download"
 
 
 def _crash_log(text: str) -> str:
-    base = os.environ.get("ARAMHEX_HOME") or os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "AramHex")
+    base = os.environ.get("ARAMHEX_HOME") or os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "AramHexTW")
     if os.path.isfile(os.path.join(os.path.dirname(sys.executable), "portable.txt")):
         base = os.path.join(os.path.dirname(sys.executable), "userdata")
     try:
@@ -28,14 +28,14 @@ def _crash_log(text: str) -> str:
 
 def _crash(text: str) -> None:
     path = _crash_log(text)
-    msg = ("海克斯大乱斗助手打不开了。\n\n"
-           "请到官网下载安装包，直接覆盖安装就行（设置会保留）。\n\n"
-           "点「是」打开官网下载页。")
+    msg = ("海克斯大亂鬥助手打不開了。\n\n"
+           "請到官網下載安裝包，直接覆蓋安裝就行（設定會保留）。\n\n"
+           "點「是」開啟官網下載頁。")
     if path:
-        msg += f"\n\n错误记录：{path}"
+        msg += f"\n\n錯誤記錄：{path}"
     try:
         import ctypes
-        if ctypes.windll.user32.MessageBoxW(None, msg, "海克斯大乱斗助手", 0x4 | 0x10) == 6:  # 是/否 + 错误图标；6 = 是
+        if ctypes.windll.user32.MessageBoxW(None, msg, "海克斯大亂鬥助手", 0x4 | 0x10) == 6:  # 是/否 + 錯誤圖示；6 = 是
             import webbrowser
             webbrowser.open(DOWNLOAD_PAGE)
     except Exception:

@@ -1,6 +1,6 @@
-"""打包后的离线自检：在读配置、联网、启动工作线程之前，跑一遍 Qt 窗口、OpenCV 和文字识别。
+"""打包後的離線自檢：在讀配置、聯網、啟動工作執行緒之前，跑一遍 Qt 視窗、OpenCV 和文字識別。
 
-安装包精简时删掉了一些用不到的库文件；这里实际调用一遍识别要用的功能，删多了就会失败，build.ps1 据此拒绝生成安装包。
+安裝包精簡時刪掉了一些用不到的庫檔案；這裡實際呼叫一遍識別要用的功能，刪多了就會失敗，build.ps1 據此拒絕生成安裝包。
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def _vision_check() -> dict:
-    """OpenCV 的图片处理和 RapidOCR 的检测、识别：画一行字，再认出来。"""
+    """OpenCV 的圖片處理和 RapidOCR 的檢測、識別：畫一行字，再認出來。"""
     import cv2
     import numpy as np
 

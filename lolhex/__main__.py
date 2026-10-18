@@ -1,10 +1,10 @@
-"""入口：python -m lolhex [选项]
+"""入口：python -m lolhex [選項]
 
-  （无参数）          启动助手（游戏浮窗）
-  --headless          不显示浮窗，只跑识别（调试用）
-  --refresh           只刷新数据并打印状态后退出
-  --scan-image 文件   用一张游戏截图测试三选一识别（排查识别问题用）
-  --hero 名称         配合 --scan-image，指定英雄以输出推荐
+  （無引數）          啟動助手（遊戲浮窗）
+  --headless          不顯示浮窗，只跑識別（除錯用）
+  --refresh           只重新整理資料並列印狀態後退出
+  --scan-image 檔案   用一張遊戲截圖測試三選一識別（排查識別問題用）
+  --hero 名稱         配合 --scan-image，指定英雄以輸出推薦
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from .config import Settings, app_home
 
 
 def _fix_stdio() -> None:
-    """控制台不是 UTF-8、或用 pythonw 启动没有控制台时，输出中文不能崩。"""
+    """控制檯不是 UTF-8、或用 pythonw 啟動沒有控制檯時，輸出中文不能崩。"""
     import io
     import os
     for name in ("stdout", "stderr"):
@@ -52,7 +52,7 @@ def _scan_image(engine, path: str, hero: str | None) -> int:
 
     img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
-        print("读不到图片：", path)
+        print("讀不到圖片：", path)
         return 2
     engine.store.refresh()
     names = {aid: a["name"] for aid, a in engine.store.mayhem_augments().items()}
@@ -60,7 +60,7 @@ def _scan_image(engine, path: str, hero: str | None) -> int:
     det = AugmentDetector(NameMatcher(names, engine.settings.match_threshold))
     offer = det.scan_full(img)
     if not offer:
-        print("没有识别到三选一画面。")
+        print("沒有識別到三選一畫面。")
         return 1
     hid = engine.store.resolve_hero(hero) if hero else None
     ev = recommend.evaluate(engine.store, hid, offer.slots, engine.settings.smoothing_games)
@@ -74,14 +74,14 @@ def _scan_image(engine, path: str, hero: str | None) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="lolhex", description="海克斯大乱斗助手")
+    ap = argparse.ArgumentParser(prog="lolhex", description="海克斯大亂鬥助手")
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--scan-image")
     ap.add_argument("--hero")
     ap.add_argument("--debug", action="store_true")
-    ap.add_argument("--minimized", action="store_true", help="启动后只显示托盘（开机自启用）")
-    ap.add_argument("--self-test-gui", metavar="REPORT", help="离线检查打包后的 Qt 和窗口插件，写入 JSON 后退出")
+    ap.add_argument("--minimized", action="store_true", help="啟動後只顯示托盤（開機自啟用）")
+    ap.add_argument("--self-test-gui", metavar="REPORT", help="離線檢查打包後的 Qt 和視窗外掛，寫入 JSON 後退出")
     args = ap.parse_args(argv)
 
     if args.self_test_gui:
@@ -92,8 +92,8 @@ def main(argv=None) -> int:
     _setup_logging(args.debug)
     settings = Settings.load()
     from . import __version__
-    logging.getLogger("lolhex").info("海克斯大乱斗助手 %s 启动；目录：%s；参数：%s", __version__,
-                                     app_home(), " ".join(sys.argv[1:]) or "（无）")
+    logging.getLogger("lolhex").info("海克斯大亂鬥助手 %s 啟動；目錄：%s；引數：%s", __version__,
+                                     app_home(), " ".join(sys.argv[1:]) or "（無）")
 
     from .engine import Engine
 
@@ -110,7 +110,7 @@ def main(argv=None) -> int:
         enable_dpi_awareness()
         engine = Engine(settings)
         engine.start()
-        print("海克斯大乱斗助手已启动（无界面）。Ctrl+C 退出")
+        print("海克斯大亂鬥助手已啟動（無介面）。Ctrl+C 退出")
         try:
             engine._stop.wait()
         except KeyboardInterrupt:
@@ -122,7 +122,7 @@ def main(argv=None) -> int:
         code = run(lambda: Engine(settings), minimized=args.minimized)
     except KeyboardInterrupt:
         code = 0
-    # 界面已关：直接结束进程，不等后台线程收尾（卡住时会占着程序文件，导致更新替换失败）
+    # 介面已關：直接結束程序，不等後臺執行緒收尾（卡住時會佔著程式檔案，導致更新替換失敗）
     logging.shutdown()
     os._exit(code or 0)
 

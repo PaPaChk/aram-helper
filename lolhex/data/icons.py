@@ -1,7 +1,7 @@
-"""装备、召唤师技能的小图标：按需从腾讯 CDN 下载到本地，界面用本地文件显示。
+"""裝備、召喚師技能的小圖示：按需從騰訊 CDN 下載到本地，介面用本地檔案顯示。
 
-界面线程只查本地文件，不等网络：没有就先返回 None（界面先显示文字），同时交给后台线程下载；
-下载完成后 version 加一，界面据此重新渲染。
+介面執行緒只查本地檔案，不等網路：沒有就先返回 None（介面先顯示文字），同時交給後臺執行緒下載；
+下載完成後 version 加一，介面據此重新渲染。
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 from . import http
 
 log = logging.getLogger(__name__)
-MAX_AGE_S = 14 * 86400  # 图标很少变；两周后顺手重下一次，跟上版本改图
+MAX_AGE_S = 14 * 86400  # 圖示很少變；兩週後順手重下一次，跟上版本改圖
 
 
 class IconCache:
@@ -28,7 +28,7 @@ class IconCache:
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="icons")
 
     def local(self, kind: str, key: str, url: str | None) -> str | None:
-        """本地图标路径（给 Qt 富文本 <img> 用），还没有就后台下载并返回 None。"""
+        """本地圖示路徑（給 Qt 富文字 <img> 用），還沒有就後臺下載並返回 None。"""
         if not key:
             return None
         path = self.folder / kind / f"{key}.png"
@@ -59,7 +59,7 @@ class IconCache:
             with self._lock:
                 self.version += 1
         except Exception as e:
-            log.info("图标下载失败 %s：%s", url, e)
+            log.info("圖示下載失敗 %s：%s", url, e)
             with self._lock:
                 self._failed[tag] = time.time()
         finally:

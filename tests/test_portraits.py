@@ -1,4 +1,4 @@
-"""头像比对：用随机纹理当"英雄头像"，检查缩放、平移、圆形遮罩、变暗、JPEG 之后仍能认对。"""
+"""頭像比對：用隨機紋理當"英雄頭像"，檢查縮放、平移、圓形遮罩、變暗、JPEG 之後仍能認對。"""
 
 import pytest
 
@@ -73,10 +73,10 @@ def test_champselect_read(monkeypatch):
 
 
 def test_team_uses_name_reader_and_gold_name(monkeypatch):
-    """队友头像是皮肤图认不出时，用称号文字；金色称号那一行是自己。"""
+    """隊友頭像是皮膚圖認不出時，用稱號文字；金色稱號那一行是自己。"""
     bank = IconBank(_icons())
     frame = np.full((1080, 1920, 3), 25, np.uint8)
-    frame[176 + 240:206 + 240, 200:300] = (60, 190, 240)  # 第 3 行称号涂成金色（BGR）
+    frame[176 + 240:206 + 240, 200:300] = (60, 190, 240)  # 第 3 行稱號塗成金色（BGR）
     reads = iter([None, "5", "9", None, None])
     got = champselect.read(frame, bank, (0, 0), lambda crop: next(reads))
     assert [(s["slot"], s["hero_id"]) for s in got["team"]] == [(1, "5"), (2, "9")]
@@ -91,12 +91,12 @@ def test_rank_grade_and_summary():
     assert rank_grade(None, 100) is None
     pytest.importorskip("PySide6")
     from lolhex.ui.overlay import champ_select_summary
-    cs = {"mine": "1", "team": [{"hero_id": "1", "name": "韦鲁斯", "win": 0.47, "grade": "C"}],
-          "bench": [{"hero_id": "2", "name": "奥拉夫", "win": 0.464, "grade": "C"},
+    cs = {"mine": "1", "team": [{"hero_id": "1", "name": "韋魯斯", "win": 0.47, "grade": "C"}],
+          "bench": [{"hero_id": "2", "name": "奧拉夫", "win": 0.464, "grade": "C"},
                     {"hero_id": "3", "name": "霞", "win": 0.492, "grade": "B"}]}
     s = champ_select_summary(cs)
-    assert s.index("霞") < s.index("奥拉夫")  # 按胜率排序
-    assert "↑2.2" in s and "你：韦鲁斯" in s
+    assert s.index("霞") < s.index("奧拉夫")  # 按勝率排序
+    assert "↑2.2" in s and "你：韋魯斯" in s
 
 
 def test_is_champ_select_marker():
@@ -109,19 +109,19 @@ def test_is_champ_select_marker():
             return text, score
         return f
     assert champselect.is_champ_select(frame, rec("可用"))
-    assert seen[0][:2] == (36, 80)  # 读的是"可用"那一小块
-    assert not champselect.is_champ_select(frame, rec("开始匹配"))
+    assert seen[0][:2] == (36, 80)  # 讀的是"可用"那一小塊
+    assert not champselect.is_champ_select(frame, rec("開始匹配"))
     assert not champselect.is_champ_select(frame, rec("可用", 0.3))
 
 
 def test_read_cards_two_or_three():
-    """开局英雄卡：读到"选择你的英雄"才识别；卡片位置按称号文字定位，二选一/三选一通用。"""
+    """開局英雄卡：讀到"選擇你的英雄"才識別；卡片位置按稱號文字定位，二選一/三選一通用。"""
     from lolhex.vision.ocr import TextLine
     frame = np.zeros((1080, 1920, 3), np.uint8)
     names = {"沙漠皇帝": "268", "黑暗之女": "1"}
     lines = [TextLine("黑暗之女", 0.99, (789, 26, 914, 65)), TextLine("沙漠皇帝", 0.99, (142, 25, 266, 65)),
-             TextLine("传说", 0.7, (400, 0, 500, 60))]
-    cards = champselect.read_cards(frame, lambda c: ("选择你的英雄", 0.99), lambda c: lines, names.get, (10, 0))
+             TextLine("傳說", 0.7, (400, 0, 500, 60))]
+    cards = champselect.read_cards(frame, lambda c: ("選擇你的英雄", 0.99), lambda c: lines, names.get, (10, 0))
     assert [c["hero_id"] for c in cards] == ["268", "1"]
     cx = (cards[0]["box"][0] + cards[0]["box"][2]) / 2
     assert abs(cx - (10 + 430 + 204)) <= 1
@@ -138,19 +138,19 @@ def test_memo_reuses_until_crop_changes():
 
     a = np.full((40, 40, 3), 100, np.uint8)
     assert memo("k", a, fn) == 100
-    assert memo("k", a.copy(), fn) == 100  # 第二次画面一样：算静止，再算一次并缓存
+    assert memo("k", a.copy(), fn) == 100  # 第二次畫面一樣：算靜止，再算一次並快取
     a2 = a.copy()
-    a2[0, 0] = 101  # 细微噪声：不重算
+    a2[0, 0] = 101  # 細微噪聲：不重算
     memo("k", a2, fn)
     assert len(calls) == 2
-    b = np.full((40, 40, 3), 160, np.uint8)  # 换了英雄：重算
+    b = np.full((40, 40, 3), 160, np.uint8)  # 換了英雄：重算
     assert memo("k", b, fn) == 160
-    assert memo("other", b, fn) == 160  # 不同位置分开缓存
+    assert memo("other", b, fn) == 160  # 不同位置分開快取
     assert len(calls) == 4
 
 
 def _name_box(strokes):
-    """模拟我方一行的英雄名：深色底，每个字是几道浅色笔画。"""
+    """模擬我方一行的英雄名：深色底，每個字是幾道淺色筆畫。"""
     box = np.full((60, 284, 3), (30, 22, 18), np.uint8)
     for x, y, w, h in strokes:
         box[y:y + h, x:x + w] = (200, 225, 235)
@@ -158,41 +158,41 @@ def _name_box(strokes):
 
 
 def test_memo_sees_name_change_with_same_length():
-    """同字数的两个名字，压成小方块后平均差很小，以前会被当成没变、一直显示旧英雄。"""
+    """同字數的兩個名字，壓成小方塊後平均差很小，以前會被當成沒變、一直顯示舊英雄。"""
     old = _name_box([(10 + 34 * k, 14, 26, 4) for k in range(4)] + [(20 + 34 * k, 14, 4, 30) for k in range(4)])
     new = old.copy()
-    new[14:44, 78:104] = (30, 22, 18)  # 只换第三个字
+    new[14:44, 78:104] = (30, 22, 18)  # 只換第三個字
     new[28:32, 78:104] = (200, 225, 235)
     new[14:44, 89:93] = (200, 225, 235)
     memo = champselect.Memo()
-    read = {old.tobytes(): "旧", new.tobytes(): "新"}
+    read = {old.tobytes(): "舊", new.tobytes(): "新"}
     fn = lambda crop: read[crop.tobytes()]
     for _ in range(3):
-        assert memo("name", old, fn) == "旧"
+        assert memo("name", old, fn) == "舊"
     assert memo("name", new, fn) == "新"
 
 
 def test_memo_does_not_freeze_fade_frame():
-    """换英雄时名字淡出淡入：半透明那一帧读成旧英雄，不能被缓存成最终结果。"""
+    """換英雄時名字淡出淡入：半透明那一幀讀成舊英雄，不能被快取成最終結果。"""
     old = _name_box([(10, 14, 120, 4), (10, 40, 120, 4)])
     new = _name_box([(10, 14, 4, 30), (60, 14, 4, 30), (110, 14, 4, 30)])
-    # 快淡入完的一帧：和最终画面只差一点，按"没变"算，靠"连续两次一样才缓存"兜住
+    # 快淡入完的一幀：和最終畫面只差一點，按"沒變"算，靠"連續兩次一樣才快取"兜住
     fade = (old.astype(np.float32) * 0.05 + new.astype(np.float32) * 0.95).astype(np.uint8)
     memo = champselect.Memo()
-    reads = iter(["旧", "旧", "旧（半透明）", "新", "新"])
+    reads = iter(["舊", "舊", "舊（半透明）", "新", "新"])
     fn = lambda crop: next(reads)
-    assert memo("name", old, fn) == "旧"
-    assert memo("name", old, fn) == "旧"
-    assert memo("name", fade, fn) == "旧（半透明）"
+    assert memo("name", old, fn) == "舊"
+    assert memo("name", old, fn) == "舊"
+    assert memo("name", fade, fn) == "舊（半透明）"
     assert memo("name", new, fn) == "新"
     assert memo("name", new, fn) == "新"
-    assert memo("name", new, fn) == "新"  # 已静止：复用，不再调用
+    assert memo("name", new, fn) == "新"  # 已靜止：複用，不再呼叫
 
 
 def test_text_spans_skips_thin_borders():
     band = np.full((90, 1060, 3), (60, 30, 40), np.uint8)
-    band[:, 330:333] = 200  # 卡片边框细竖线
-    for x in (140, 465, 790):  # 三段称号，字间有空隙
+    band[:, 330:333] = 200  # 卡片邊框細豎線
+    for x in (140, 465, 790):  # 三段稱號，字間有空隙
         for k in range(4):
             band[30:60, x + k * 32:x + k * 32 + 26] = (190, 210, 225)
     spans = champselect.text_spans(band)
@@ -201,7 +201,7 @@ def test_text_spans_skips_thin_borders():
 
 
 def test_clicking_own_panel_keeps_client_foreground(monkeypatch):
-    """点右上角浮窗时前台变成浮窗，但客户端还在画面上：选人标注不能消失。"""
+    """點右上角浮窗時前臺變成浮窗，但客戶端還在畫面上：選人標註不能消失。"""
     from types import SimpleNamespace
     from lolhex.vision import window as win
     fg = {"h": 111}
@@ -210,16 +210,16 @@ def test_clicking_own_panel_keeps_client_foreground(monkeypatch):
     monkeypatch.setattr(win, "ctypes", SimpleNamespace(windll=SimpleNamespace(user32=user32)))
     monkeypatch.setattr(win, "_companions", set())
     assert win.is_foreground(111)
-    fg["h"] = 222  # 点了自己的浮窗
+    fg["h"] = 222  # 點了自己的浮窗
     assert not win.is_foreground(111)
     win.add_companion(222)
     assert win.is_foreground(111)
-    fg["h"] = 333  # 切到别的程序：照常隐藏
+    fg["h"] = 333  # 切到別的程式：照常隱藏
     assert not win.is_foreground(111)
 
 
 def test_memo_retries_unrecognized_until_found():
-    """称号淡入时先认不出；画面只差一点（缩略图没超阈值）也要重认，不能一直用"认不出"的缓存。"""
+    """稱號淡入時先認不出；畫面只差一點（縮圖沒超閾值）也要重認，不能一直用"認不出"的快取。"""
     memo = champselect.Memo()
     results = iter([None, None, "268"])
     calls = []
@@ -232,17 +232,17 @@ def test_memo_retries_unrecognized_until_found():
     assert memo("k", a, fn, bool) is None
     assert memo("k", a.copy(), fn, bool) is None
     assert memo("k", a.copy(), fn, bool) == "268"
-    assert memo("k", a.copy(), fn, bool) == "268"  # 认出来之后照常复用
+    assert memo("k", a.copy(), fn, bool) == "268"  # 認出來之後照常複用
     assert len(calls) == 3
 
 
 def test_read_cards_not_stuck_after_fade_in():
-    """先在淡入中途扫到（有标题、认不出名字），画面稳定后再扫一次就要出卡。"""
+    """先在淡入中途掃到（有標題、認不出名字），畫面穩定後再掃一次就要出卡。"""
     from lolhex.vision.ocr import TextLine
     frame = np.zeros((1080, 1920, 3), np.uint8)
     names = {"沙漠皇帝": "268", "黑暗之女": "1"}
     memo = champselect.Memo()
-    title = lambda c: ("选择你的英雄", 0.99)
+    title = lambda c: ("選擇你的英雄", 0.99)
     faded = [TextLine("沙漠", 0.4, (142, 25, 266, 65))]
     shown = [TextLine("黑暗之女", 0.99, (789, 26, 914, 65)), TextLine("沙漠皇帝", 0.99, (142, 25, 266, 65))]
     assert champselect.read_cards(frame, title, lambda c: faded, names.get, memo=memo) == []

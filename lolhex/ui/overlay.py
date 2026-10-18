@@ -1,11 +1,11 @@
-"""游戏内悬浮层（PySide6）。
+"""遊戲內懸浮層（PySide6）。
 
-- 小按钮：常驻游戏窗口右上角，点一下展开/收起详情（英雄、推荐出装、加点、识别状态）。
-  点完按钮、候选或链接后把焦点还给游戏，免得空格等按键落在浮窗上；展开后鼠标离开
-  AUTO_HIDE_SECONDS 秒自动收起（正在搜索框里打字时不收）。
-- 卡片标签：识别到三选一时，在每张卡的标题下方显示「首选 / 可选 / 可考虑刷新」与依据。
-  标签层对鼠标完全透明，不挡游戏点击；所有悬浮窗都设置为不被截图，避免识别到自己。
-只有无边框/窗口化模式下悬浮层才能盖在游戏上面。
+- 小按鈕：常駐遊戲視窗右上角，點一下展開/收起詳情（英雄、推薦出裝、加點、識別狀態）。
+  點完按鈕、候選或連結後把焦點還給遊戲，免得空格等按鍵落在浮窗上；展開後滑鼠離開
+  AUTO_HIDE_SECONDS 秒自動收起（正在搜尋框裡打字時不收）。
+- 卡片標籤：識別到三選一時，在每張卡的標題下方顯示「首選 / 可選 / 可考慮重新整理」與依據。
+  標籤層對滑鼠完全透明，不擋遊戲點選；所有懸浮窗都設定為不被截圖，避免識別到自己。
+只有無邊框/視窗化模式下懸浮層才能蓋在遊戲上面。
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ from .herosearch import hero_completer
 
 log = logging.getLogger(__name__)
 
-RARITY_CN = {"silver": "白银", "gold": "黄金", "prismatic": "棱彩"}
-VERDICT = {"best": ("首选", QColor(95, 211, 141)), "ok": ("可选", QColor(98, 168, 255)),
-           "reroll": ("可考虑刷新", QColor(255, 122, 107)), "unknown": ("未知", QColor(150, 150, 150))}
+RARITY_CN = {"silver": "白銀", "gold": "黃金", "prismatic": "稜彩"}
+VERDICT = {"best": ("首選", QColor(95, 211, 141)), "ok": ("可選", QColor(98, 168, 255)),
+           "reroll": ("可考慮重新整理", QColor(255, 122, 107)), "unknown": ("未知", QColor(150, 150, 150))}
 
 
 AUTO_HIDE_SECONDS = 5
@@ -59,7 +59,7 @@ def _pct(x) -> str:
 
 
 class BadgeLayer(QWidget):
-    """覆盖游戏客户区的透明层，只画三张卡的标签。"""
+    """覆蓋遊戲客戶區的透明層，只畫三張卡的標籤。"""
 
     def __init__(self):
         super().__init__()
@@ -112,27 +112,27 @@ class BadgeLayer(QWidget):
             cx = (x0 + x1) / 2
             label, color = VERDICT.get(r["verdict"], VERDICT["unknown"])
             if r.get("thin") == "too_few":
-                label = "样本太少 · 建议刷新"
+                label = "樣本太少 · 建議重新整理"
             lines = []
             if r.get("score") is not None:
                 s = f"{r['score']:+.1f}"
                 if show_win and r.get("win") is not None:
-                    s += f" · 胜率{_pct(r['win'])}"
+                    s += f" · 勝率{_pct(r['win'])}"
                 lines.append(s)
             meta = []
             if r.get("rarity") and r.get("rank"):
-                metric = "胜率" if r.get("rank_basis") == "hero_rarity_win_rate" else ""
+                metric = "勝率" if r.get("rank_basis") == "hero_rarity_win_rate" else ""
                 meta.append(f"{RARITY_CN.get(r['rarity'], '')}{metric}第{r['rank']}/{r.get('rank_total') or '?'}")
             if r.get("tier"):
-                meta.append(f"{r['tier']}级")
+                meta.append(f"{r['tier']}級")
             if r.get("basis") == "tier_only":
-                meta.append("按官方层级")
+                meta.append("按官方層級")
             if r.get("thin") == "few":
-                meta.insert(0, "样本偏少")
+                meta.insert(0, "樣本偏少")
             if meta:
                 lines.append(" · ".join(meta))
             h = 30 + 18 * len(lines)
-            # 放在标题正上方（压在海克斯图标下半部分）：不挡名字、描述和下方的刷新按钮
+            # 放在標題正上方（壓在海克斯圖示下半部分）：不擋名字、描述和下方的重新整理按鈕
             rect = QRect(int(cx - w / 2), int(y0 - 4 - h), int(w), int(h))
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(10, 12, 16, 215))
@@ -167,7 +167,7 @@ def win_color(win) -> QColor:
 
 
 def champ_select_summary(cs: dict, show_win: bool = True) -> str:
-    """浮窗/主界面用的一行汇总：待选栏按胜率排序，和自己当前英雄比较。"""
+    """浮窗/主介面用的一行彙總：待選欄按勝率排序，和自己當前英雄比較。"""
     mine = next((t for t in cs.get("team") or [] if t["hero_id"] == cs.get("mine")), None)
     my_win = (mine or {}).get("win")
     bench = sorted(cs.get("bench") or [], key=lambda b: -(b.get("win") or 0))
@@ -181,19 +181,19 @@ def champ_select_summary(cs: dict, show_win: bool = True) -> str:
         items.append(txt)
     if cs.get("cards"):
         cards = sorted(cs["cards"], key=lambda c: -(c.get("win") or 0))
-        return "开局选英雄：" + "、".join(
+        return "開局選英雄：" + "、".join(
             f"{c.get('name') or c['hero_id']} {c.get('grade') or ''}{' ' + _pct(c.get('win')) if show_win else ''}"
             for c in cards)
-    head = "待选栏"
+    head = "待選欄"
     if mine:
         head += f"（你：{mine.get('name')} {mine.get('grade') or ''}{' ' + _pct(my_win) if show_win else ''}）"
     return f"{head}：" + "、".join(items)
 
 
 class ChampSelectLayer(QWidget):
-    """选英雄界面：在预选栏和我方每个英雄头像旁标评级（国服排名换算 S–D）与胜率；
-    预选栏里胜率比自己当前英雄高的标绿，最高的那个加金框（值得换）。
-    覆盖客户端窗口，对鼠标完全透明，不挡点击。"""
+    """選英雄介面：在預選欄和我方每個英雄頭像旁標評級（國服排名換算 S–D）與勝率；
+    預選欄裡勝率比自己當前英雄高的標綠，最高的那個加金框（值得換）。
+    覆蓋客戶端視窗，對滑鼠完全透明，不擋點選。"""
 
     def __init__(self):
         super().__init__()
@@ -236,7 +236,7 @@ class ChampSelectLayer(QWidget):
         my_win = (mine or {}).get("win")
         better = [b for b in bench if b.get("win") is not None and my_win is not None and b["win"] > my_win]
         best = max(better, key=lambda b: b["win"]) if better else None
-        # 开局英雄卡：胜率最高的那张加金框
+        # 開局英雄卡：勝率最高的那張加金框
         cards = [c for c in cs.get("cards") or [] if c.get("win") is not None]
         best_card = max(cards, key=lambda c: c["win"]) if len(cards) >= 2 else None
         ox, oy = self.origin.x(), self.origin.y()
@@ -245,7 +245,7 @@ class ChampSelectLayer(QWidget):
                 x0, y0, x1, y1 = ((s["box"][0] - ox) / dpr, (s["box"][1] - oy) / dpr,
                                   (s["box"][2] - ox) / dpr, (s["box"][3] - oy) / dpr)
                 pw = x1 - x0
-                # 字号跟头像大小走：不同分辨率、缩放比例、客户端尺寸下比例一致
+                # 字號跟頭像大小走：不同解析度、縮放比例、客戶端尺寸下比例一致
                 px = max(9, int(pw * {"bench": 0.24, "team": 0.21, "cards": 0.1}[kind]))
                 big = QFont("Microsoft YaHei UI")
                 big.setPixelSize(px)
@@ -274,7 +274,7 @@ class ChampSelectLayer(QWidget):
                     p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 4, 4)
                     p.drawRect(QRect(int(x0) - 2, int(y0) - 2, int(pw) + 4, int(y1 - y0) + 4))
                 line = QRect(r.x(), r.y() + (int(px * 0.15) if kind != "bench" else 0), r.width(), int(px * 1.45))
-                # 第一行：评级字母（按评级着色）+ 胜率
+                # 第一行：評級字母（按評級著色）+ 勝率
                 fm_w = QFontMetrics(big)
                 gap = fm_w.horizontalAdvance(" ")
                 tw = fm_w.horizontalAdvance(grade) + (gap if grade and win_txt else 0) + fm_w.horizontalAdvance(win_txt)
@@ -297,16 +297,16 @@ class ChampSelectLayer(QWidget):
                     p.drawText(QRect(r.x(), line.bottom(), r.width(), r.bottom() - line.bottom()),
                                Qt.AlignHCenter | Qt.AlignTop, ("我 · " if is_me else "") + sub)
                 elif kind == "cards":
-                    sub = f"胜率第{s['rank']}/{s.get('total') or '?'}" if s.get("rank") else ""
+                    sub = f"勝率第{s['rank']}/{s.get('total') or '?'}" if s.get("rank") else ""
                     p.setFont(small)
                     p.setPen(QColor(240, 200, 90) if s is best_card else QColor(170, 176, 190))
                     p.drawText(QRect(r.x(), line.bottom(), r.width(), r.bottom() - line.bottom()),
-                               Qt.AlignHCenter | Qt.AlignTop, "★ 推荐" if s is best_card else sub)
+                               Qt.AlignHCenter | Qt.AlignTop, "★ 推薦" if s is best_card else sub)
         p.end()
 
 
 class ControlPanel(QWidget):
-    """右上角的小按钮 + 可展开详情。选英雄阶段跟随客户端窗口，进游戏后跟随游戏窗口。"""
+    """右上角的小按鈕 + 可展開詳情。選英雄階段跟隨客戶端視窗，進遊戲後跟隨遊戲視窗。"""
 
     STYLE_BODY = ("QWidget#body{background:#101318ee;border:1px solid #2c3240;border-radius:8px}"
                   "QLabel{color:#e6e8ee;font:12px 'Microsoft YaHei UI'}"
@@ -316,16 +316,16 @@ class ControlPanel(QWidget):
 
     def __init__(self, engine, corner: str = "top-right"):
         super().__init__()
-        # 面板需要能输入（搜英雄），所以不设 WindowDoesNotAcceptFocus
+        # 面板需要能輸入（搜英雄），所以不設 WindowDoesNotAcceptFocus
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.engine = engine
         self.corner = corner
         self.expanded = False
-        self.target_hwnd = 0      # 游戏窗口（进游戏后）或客户端窗口，点完浮窗把焦点还给它
-        self._away_since = None   # 展开后鼠标离开浮窗的时刻
-        self._hovered = False     # 这次展开后鼠标是否进过浮窗
+        self.target_hwnd = 0      # 遊戲視窗（進遊戲後）或客戶端視窗，點完浮窗把焦點還給它
+        self._away_since = None   # 展開後滑鼠離開浮窗的時刻
+        self._hovered = False     # 這次展開後滑鼠是否進過浮窗
         self._auto_opened = False
         self._auto_opened_for = None
         self._names = {}
@@ -336,7 +336,7 @@ class ControlPanel(QWidget):
         self.btn = QPushButton()
         self.btn.setIcon(app_icon())
         self.btn.setIconSize(QSize(30, 30))
-        self.btn.setToolTip("海克斯大乱斗助手：点击展开/收起")
+        self.btn.setToolTip("海克斯大亂鬥助手：點選展開/收起")
         self.btn.setFixedSize(40, 40)
         self.btn.setCursor(Qt.PointingHandCursor)
         self.btn.setStyleSheet("QPushButton{background:#171a21ee;color:#e7c35a;border:1px solid #3a4150;"
@@ -352,14 +352,14 @@ class ControlPanel(QWidget):
         bl = QVBoxLayout(self.body)
         bl.setContentsMargins(10, 10, 10, 10)
         bl.setSpacing(6)
-        # 英雄：识别结果 / 候选 / 搜索手动选
+        # 英雄：識別結果 / 候選 / 搜尋手動選
         self.hero_label = QLabel()
         self.hero_label.setTextFormat(Qt.RichText)
         self.hero_label.setWordWrap(True)
         self.cands = QHBoxLayout()
         self.cands.setSpacing(4)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜英雄手动选择：提莫 / 提百万 / tm")
+        self.search.setPlaceholderText("搜英雄手動選擇：提莫 / 提百萬 / tm")
         self._completer_ready = False
         self.search.returnPressed.connect(self._search_pick)
         self.search.installEventFilter(self)
@@ -379,7 +379,7 @@ class ControlPanel(QWidget):
 
     def showEvent(self, e):
         win.exclude_from_capture(int(self.winId()))
-        win.add_companion(int(self.winId()))  # 点浮窗不算离开客户端，标注照常显示
+        win.add_companion(int(self.winId()))  # 點浮窗不算離開客戶端，標註照常顯示
         super().showEvent(e)
 
     def toggle(self):
@@ -393,7 +393,7 @@ class ControlPanel(QWidget):
         self.give_back_focus()
 
     def give_back_focus(self):
-        # 等这次点击处理完再还焦点，否则 Windows 会在点击结束时又把浮窗激活
+        # 等這次點選處理完再還焦點，否則 Windows 會在點選結束時又把浮窗啟用
         QTimer.singleShot(0, lambda: win.give_focus(self.target_hwnd))
 
     def eventFilter(self, obj, ev):
@@ -407,7 +407,7 @@ class ControlPanel(QWidget):
         return self.search.hasFocus() and self.isActiveWindow()
 
     def auto_hide(self, phase) -> None:
-        """展开后鼠标离开一段时间就收起。选英雄阶段自动展开的，鼠标进来过或进了游戏才开始计时。"""
+        """展開後滑鼠離開一段時間就收起。選英雄階段自動展開的，滑鼠進來過或進了遊戲才開始計時。"""
         if not self.expanded or not self.isVisible():
             return
         if self.frameGeometry().contains(QCursor.pos()):
@@ -479,7 +479,7 @@ class ControlPanel(QWidget):
         self.cands.addStretch(1)
 
     def update_from(self, snap: dict) -> None:
-        # 选英雄阶段识别到新英雄时自动展开一次，方便看胜率、出装、加点
+        # 選英雄階段識別到新英雄時自動展開一次，方便看勝率、出裝、加點
         hid = snap.get("hero_id")
         if hid and snap.get("phase") == "client" and self._auto_opened_for != hid:
             self._auto_opened_for = hid
@@ -497,16 +497,16 @@ class ControlPanel(QWidget):
             b = self.engine.hero_brief(hid)
             rating = []
             if b.get("grade"):
-                rating.append(f"评级 {b['grade']}")
+                rating.append(f"評級 {b['grade']}")
             if b.get("rank"):
-                rating.append(f"胜率第{b['rank']}/{b.get('total') or '?'}")
+                rating.append(f"勝率第{b['rank']}/{b.get('total') or '?'}")
             if show_win and r.get("win") is not None:
-                rating.append(f"胜率 {_pct(r['win'])}")
+                rating.append(f"勝率 {_pct(r['win'])}")
             if r.get("pick") is not None:
-                rating.append(f"出场 {_pct(r['pick'])}")
+                rating.append(f"出場 {_pct(r['pick'])}")
             hero_html = f"<b style='color:#e7c35a;font-size:14px'>{h['name']}</b> {h['nick']}<br>{' · '.join(rating)}"
         else:
-            hero_html = "<span style='color:#8b93a7'>未识别英雄</span>"
+            hero_html = "<span style='color:#8b93a7'>未識別英雄</span>"
         if self.hero_label.text() != hero_html:
             self.hero_label.setText(hero_html)
         self._set_candidates(snap.get("candidates") or [])
@@ -526,11 +526,11 @@ class ControlPanel(QWidget):
             top = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
             top.sort(key=lambda a: -a["delta"])
             if top:
-                parts.append("推荐海克斯：" + "、".join(f"{a['name']}({a['delta']:+.1f})" for a in top[:5]))
+                parts.append("推薦海克斯：" + "、".join(f"{a['name']}({a['delta']:+.1f})" for a in top[:5]))
         if snap.get("vision", {}).get("blank"):
-            parts.append("<span style='color:#ff7a6b'>截图全黑，请把游戏改成无边框</span>")
+            parts.append("<span style='color:#ff7a6b'>截圖全黑，請把遊戲改成無邊框</span>")
         parts.append(f"<span style='color:#8b93a7'>{data_status_html(snap.get('data', {}))}</span>")
-        parts.append("<a href='rescan' style='color:#62a8ff'>重新识别</a>　"
+        parts.append("<a href='rescan' style='color:#62a8ff'>重新識別</a>　"
                      "<a href='quit' style='color:#ff7a6b'>退出助手</a>")
         html = "<br>".join(parts)
         if self.info.text() != html:
@@ -545,7 +545,7 @@ class Overlay:
         self.champ = ChampSelectLayer()
         self.panel = ControlPanel(engine, engine.settings.overlay_corner)
         self.panel.show()
-        self.autoshot = AutoShot(engine)  # 设置里开了自动截图时，三选一和选英雄时自动截整屏
+        self.autoshot = AutoShot(engine)  # 設定裡開了自動截圖時，三選一和選英雄時自動截整屏
         self.timer = QTimer()
         self.timer.timeout.connect(self._tick)
         self.timer.start(250)
@@ -564,22 +564,22 @@ class Overlay:
             return
         snap = self.engine.snapshot()
         if snap.get("vision", {}).get("blank") and not getattr(self, "_blank_warned", False):
-            self._blank_warned = True  # 每次打开软件最多提醒一次
+            self._blank_warned = True  # 每次開啟軟體最多提醒一次
             notify = getattr(self, "notify", None)
             if notify:
-                notify("截图是黑的：游戏可能是全屏模式。请在游戏设置 → 视频里，把窗口模式改成「无边框」。")
+                notify("截圖是黑的：遊戲可能是全屏模式。請在遊戲設定 → 影片裡，把視窗模式改成「無邊框」。")
         game = win.find_game_window()
         grect = win.client_rect(game) if game else None
         self.badges.update_from(snap, grect)
         client = None if grect else win.find_client_window()
         crect = win.client_rect(client) if client else None
-        # 标注层置顶：客户端不在前台（切到别的窗口）时隐藏，免得盖在别的程序上
+        # 標註層置頂：客戶端不在前臺（切到別的視窗）時隱藏，免得蓋在別的程式上
         self.champ.update_from(snap, crect if crect and win.is_foreground(client) else None)
         self.autoshot.tick(snap, grect, crect if crect and win.is_foreground(client) else None)
         self.panel.target_hwnd = game or client or 0
         self.panel.update_from(snap)
         self.panel.auto_hide(snap.get("phase"))
-        # 选英雄阶段跟随客户端窗口，进游戏后跟随游戏窗口；两者都不在时不显示浮窗（用托盘和主界面）
+        # 選英雄階段跟隨客戶端視窗，進遊戲後跟隨遊戲視窗；兩者都不在時不顯示浮窗（用托盤和主介面）
         rect = grect or crect
         if rect is None:
             self.panel.hide()
@@ -593,8 +593,8 @@ SINGLE_INSTANCE = "aramhex-single-instance"
 
 
 def version_notice(settings) -> str | None:
-    """刚更新过（这次的版本和上次运行的不一样）就返回一句提示；第一次安装不提示。记下这次的版本。
-    老版本没记过 last_version：有设置文件就算更新过来的。"""
+    """剛更新過（這次的版本和上次執行的不一樣）就返回一句提示；第一次安裝不提示。記下這次的版本。
+    老版本沒記過 last_version：有設定檔案就算更新過來的。"""
     from .. import __version__
     last = settings.last_version
     if last == __version__:
@@ -605,7 +605,7 @@ def version_notice(settings) -> str | None:
 
 
 def run(make_engine, minimized: bool = False) -> int:
-    """启动图形界面。已有实例在运行时，只通知它显示主窗口然后退出。"""
+    """啟動圖形介面。已有例項在執行時，只通知它顯示主視窗然後退出。"""
     import getpass
     import sys
 
@@ -615,13 +615,13 @@ def run(make_engine, minimized: bool = False) -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-    app.setApplicationName("海克斯大乱斗助手")
+    app.setApplicationName("海克斯大亂鬥助手")
     app.setWindowIcon(app_icon())
 
     name = f"{SINGLE_INSTANCE}-{getpass.getuser()}"
 
     def notify_running() -> bool:
-        for _ in range(3):  # 已有的助手可能正忙，多试几次
+        for _ in range(3):  # 已有的助手可能正忙，多試幾次
             probe = QLocalSocket()
             probe.connectToServer(name)
             if probe.waitForConnected(1000):
@@ -632,8 +632,8 @@ def run(make_engine, minimized: bool = False) -> int:
         return False
 
     if not single_instance.acquire(name):
-        # 已经有助手在跑：让它显示主窗口。通知不到时多半是旧进程正在退出（例如更新后自动重启），
-        # 等它退出后接班；等不到就不再起第二个
+        # 已經有助手在跑：讓它顯示主視窗。通知不到時多半是舊程序正在退出（例如更新後自動重啟），
+        # 等它退出後接班；等不到就不再起第二個
         if notify_running() or not single_instance.acquire(name, 10_000):
             return 0
     QLocalServer.removeServer(name)
@@ -641,7 +641,7 @@ def run(make_engine, minimized: bool = False) -> int:
     server.listen(name)
 
     engine = make_engine()
-    win.set_capture_allowed(engine.settings.allow_capture)  # 录屏、截图时是否显示浮窗
+    win.set_capture_allowed(engine.settings.allow_capture)  # 錄屏、截圖時是否顯示浮窗
     engine.start()
     ov = Overlay(engine)
     ov.set_visible(engine.settings.overlay)
@@ -655,25 +655,25 @@ def run(make_engine, minimized: bool = False) -> int:
         if conn:
             conn.readAll()
         main_win.show_and_raise()
-        main_win.check_update()  # 用户再点一次图标：顺便查更新，不用退出重开
+        main_win.check_update()  # 使用者再點一次圖示：順便查更新，不用退出重開
 
     server.newConnection.connect(on_second_instance)
     note = version_notice(engine.settings)
     if note:
-        tray.showMessage("海克斯大乱斗助手", note, app_icon(), 8000)
-    ov.notify = lambda text: tray.showMessage("海克斯大乱斗助手", text, app_icon(), 12000)
+        tray.showMessage("海克斯大亂鬥助手", note, app_icon(), 8000)
+    ov.notify = lambda text: tray.showMessage("海克斯大亂鬥助手", text, app_icon(), 12000)
     if not engine.settings.seen_welcome:
         def welcome():
             engine.settings.seen_welcome = True
             engine.settings.save()
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(main_win, "使用前", "请在游戏设置 → 视频里，把窗口模式改成「无边框」（或「窗口化」）。\n\n"
-                                    "全屏模式下截不到画面，识别不了。")
+            QMessageBox.information(main_win, "使用前", "請在遊戲設定 → 影片裡，把視窗模式改成「無邊框」（或「視窗化」）。\n\n"
+                                    "全屏模式下截不到畫面，識別不了。")
         QTimer.singleShot(1200, welcome)
     failed = patch.take_failure()
     if failed:
-        log.warning("上次更新没装上：%s", failed)
-        tray.showMessage("海克斯大乱斗助手", "上次更新没有装上，已恢复原版本。打开主界面点「立即更新」再试一次。",
+        log.warning("上次更新沒裝上：%s", failed)
+        tray.showMessage("海克斯大亂鬥助手", "上次更新沒有裝上，已恢復原版本。開啟主介面點「立即更新」再試一次。",
                          app_icon(), 10000)
     main_win.check_update()
     main_win.refresh_rank_if_stale()

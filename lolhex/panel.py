@@ -1,14 +1,14 @@
-"""单英雄资料面板：胜率与评级、海克斯全表、出装、加点。主窗口和游戏内浮窗共用。"""
+"""單英雄資料面板：勝率與評級、海克斯全表、出裝、加點。主視窗和遊戲內浮窗共用。"""
 
 from __future__ import annotations
 
 from . import recommend
 
-MIN_SHARE = 0.1     # 出装按胜率排之前，先去掉出场不到同类最热门 1/10 的（样本太少，胜率说明不了什么）
+MIN_SHARE = 0.1     # 出裝按勝率排之前，先去掉出場不到同類最熱門 1/10 的（樣本太少，勝率說明不了什麼）
 
 
 def by_win(rows: list[dict], min_games: int = 0) -> list[dict]:
-    """有一定出场的里面按胜率从高到低排。出场率缺失时用场次比较。"""
+    """有一定出場的裡面按勝率從高到低排。出場率缺失時用場次比較。"""
     def share(x):
         return x.get("pick") or x.get("games") or 0
     top = max((share(x) for x in rows), default=0)
@@ -45,7 +45,7 @@ def hero_panel(store, hero_key, k: int = 300) -> dict | None:
         return {"id": str(i), "name": it.get("name") or name or str(i), "icon": it.get("icon")}
 
     b = data.get("builds") or {}
-    # 官方出装都按胜率排（只比有一定出场的）
+    # 官方出裝都按勝率排（只比有一定出場的）
     builds = {
         "full": [{**x, "items": [item(i) for i in x["items"]]} for x in by_win(b.get("full", []))],
         "core": [{**x, "items": [item(i) for i in x["items"]]} for x in by_win(b.get("core", []))],
@@ -64,5 +64,5 @@ def hero_panel(store, hero_key, k: int = 300) -> dict | None:
         "date": data.get("date"), "patch": store.static.get("patch"),
         "data_patch": ag.get("patch"), "data_revision": (store.status().get("dataset_revision")),
         "splash": data.get("splash"),
-        "win_source": ag.get("label") or "暂无统计数据", "summoners": [],
+        "win_source": ag.get("label") or "暫無統計資料", "summoners": [],
     }

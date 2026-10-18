@@ -1,16 +1,16 @@
-"""程序更新：查 GitHub Releases 有没有新版本；用户点了才下载安装，从不自己装。
+"""程式更新：查 GitHub Releases 有沒有新版本；使用者點了才下載安裝，從不自己裝。
 
-    GET https://api.github.com/repos/<仓库>/releases/latest
+    GET https://api.github.com/repos/<倉庫>/releases/latest
       tag_name  版本（v1.2.3）
-      body      更新说明
-      assets    AramHex-Setup-<版本>.exe（安装版）、AramHex-Portable-<版本>.zip（便携版）、SHA256SUMS.txt
+      body      更新說明
+      assets    AramHex-Setup-<版本>.exe（安裝版）、AramHex-Portable-<版本>.zip（便攜版）、SHA256SUMS.txt
 
-安装包的 SHA-256 优先用 GitHub 给每个 asset 算的 digest（"sha256:..."），没有时读 SHA256SUMS.txt。
-下载后核对 SHA-256，不一致就删掉并报错。匿名接口每个 IP 每小时 60 次，启动、再次打开、每 30 分钟各查一次足够。
-便携版不能替换自己：有新版本时只打开下载页。
+安裝包的 SHA-256 優先用 GitHub 給每個 asset 算的 digest（"sha256:..."），沒有時讀 SHA256SUMS.txt。
+下載後核對 SHA-256，不一致就刪掉並報錯。匿名介面每個 IP 每小時 60 次，啟動、再次開啟、每 30 分鐘各查一次足夠。
+便攜版不能替換自己：有新版本時只開啟下載頁。
 
-国内常常连不上 GitHub：查不到时改从 jsDelivr 读最新版本号（取最新 tag 里的 lolhex/__init__.py）。
-这条路拿不到安装包和 SHA-256，所以只提示有新版本、打开下载页，不在程序里直接安装。
+國內常常連不上 GitHub：查不到時改從 jsDelivr 讀最新版本號（取最新 tag 裡的 lolhex/__init__.py）。
+這條路拿不到安裝包和 SHA-256，所以只提示有新版本、開啟下載頁，不在程式裡直接安裝。
 """
 
 from __future__ import annotations
@@ -40,23 +40,23 @@ _VERSION = re.compile(r'^__version__\s*=\s*"([0-9][0-9A-Za-z.\-]*)"', re.M)
 PROBE_HOSTS = ("fastly.jsdelivr.net", "gcore.jsdelivr.net")
 SITE_LATEST = f"{MIRROR}/latest.json"
 DOWNLOAD_PAGE = f"{WEBSITE}/#download"
-SLOW_BPS = 150 * 1024    # 整包下载：前 SLOW_AFTER_S 秒平均低于这个速度就放弃，改让用户去网盘
+SLOW_BPS = 150 * 1024    # 整包下載：前 SLOW_AFTER_S 秒平均低於這個速度就放棄，改讓使用者去網盤
 SLOW_AFTER_S = 12
 
 
 class SlowDownload(Exception):
-    """从 GitHub 下载安装包太慢。"""
+    """從 GitHub 下載安裝包太慢。"""
 
 
 def pan_links(timeout: float = 6) -> dict:
-    """当前的网盘链接 {"setup": ..., "portable": ...}（云控配置，每次发版会换）；取不到返回空字典。"""
+    """當前的網盤連結 {"setup": ..., "portable": ...}（雲控配置，每次發版會換）；取不到返回空字典。"""
     from . import cloud
     d = cloud.refresh(timeout).get("downloads") or {}
     return {k: str(d[k]) for k in ("setup", "portable") if d.get(k)}
 
 
 def check_site(current: str, timeout: float = 6, url: str = SITE_LATEST) -> dict | None:
-    """官网镜像上的最新版本（DMIT 从 GitHub Release 同步：版本、说明、安装包名、SHA-256、GitHub 下载地址）。"""
+    """官網映象上的最新版本（DMIT 從 GitHub Release 同步：版本、說明、安裝包名、SHA-256、GitHub 下載地址）。"""
     r = requests.get(url, headers={"User-Agent": HEADERS["User-Agent"]}, timeout=timeout)
     r.raise_for_status()
     j = r.json()
@@ -78,8 +78,8 @@ def _next_versions(v: str) -> list[str]:
 
 
 def probe_newer(current: str, timeout: float = 8, hosts=PROBE_HOSTS, steps: int = 6) -> tuple[str | None, bool]:
-    """按 tag 试探下一个版本（1.0.4 → 试 1.0.5、1.1.0、2.0.0），找到就从那个版本接着试。
-    jsDelivr 按 tag 取是即时的，不像"最新版"别名那样会缓存好几个小时。返回 (最高版本或 None, 是否连上过)。"""
+    """按 tag 試探下一個版本（1.0.4 → 試 1.0.5、1.1.0、2.0.0），找到就從那個版本接著試。
+    jsDelivr 按 tag 取是即時的，不像"最新版"別名那樣會快取好幾個小時。返回 (最高版本或 None, 是否連上過)。"""
     from .patch import tag_for
     found, reached, v = None, False, current
     for _ in range(steps):
@@ -98,7 +98,7 @@ def probe_newer(current: str, timeout: float = 8, hosts=PROBE_HOSTS, steps: int 
                             hit = nxt
                     except ValueError:
                         pass
-                break  # 这个节点答复了（有或没有），不用再问别的节点
+                break  # 這個節點答覆了（有或沒有），不用再問別的節點
             if hit:
                 break
         if not hit:
@@ -108,9 +108,9 @@ def probe_newer(current: str, timeout: float = 8, hosts=PROBE_HOSTS, steps: int 
 
 
 def check_mirror(current: str, timeout: float = 8, mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS) -> dict | None:
-    """GitHub 连不上时从镜像查最新版本：按 tag 试探下一个版本，再读各节点的"最新版"，取最高的。
-    有新版本返回只带下载页的信息（安装包地址和 SHA-256 拿不到，增量更新另有清单校验），没有返回 None；
-    镜像都连不上时抛异常。"""
+    """GitHub 連不上時從映象查最新版本：按 tag 試探下一個版本，再讀各節點的"最新版"，取最高的。
+    有新版本返回只帶下載頁的資訊（安裝包地址和 SHA-256 拿不到，增量更新另有清單校驗），沒有返回 None；
+    映象都連不上時拋異常。"""
     from concurrent.futures import ThreadPoolExecutor
 
     def alias(url):
@@ -118,11 +118,11 @@ def check_mirror(current: str, timeout: float = 8, mirrors=VERSION_MIRRORS, prob
         r.raise_for_status()
         m = _VERSION.search(r.text)
         if not m:
-            raise ValueError("镜像上的版本号读不出来")
+            raise ValueError("映象上的版本號讀不出來")
         return m.group(1)
 
     versions, last, reached = [], None, False
-    # 试探 tag 和问各节点的"最新版"同时进行（各节点对"最新版"的缓存不一样，都问，取最高的）
+    # 試探 tag 和問各節點的"最新版"同時進行（各節點對"最新版"的快取不一樣，都問，取最高的）
     with ThreadPoolExecutor(max_workers=1 + len(mirrors)) as pool:
         probe = pool.submit(probe_newer, current, timeout, probe_hosts) if probe_hosts else None
         asks = [pool.submit(alias, url) for url in mirrors]
@@ -138,7 +138,7 @@ def check_mirror(current: str, timeout: float = 8, mirrors=VERSION_MIRRORS, prob
             if probed:
                 versions.append(probed)
     if not reached:
-        raise last or requests.ConnectionError("没有可用的镜像")
+        raise last or requests.ConnectionError("沒有可用的映象")
     best = max(versions, key=version_key, default=None)
     if not best or not is_newer(best, current):
         return None
@@ -169,17 +169,17 @@ def _sha_from_sums(assets: list[dict], name: str, timeout: float) -> str | None:
 
 def check(current: str, timeout: float = 8, strict: bool = False, api: str = API,
           mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS, site: str | None = SITE_LATEST) -> dict | None:
-    """有新版本返回它的信息，没有或查不到返回 None。先问官网镜像，不通再问 GitHub 和 jsDelivr。
-    strict=True（用户手动点"检查更新"）时查不到就抛异常，好告诉用户是没新版本还是没连上。"""
+    """有新版本返回它的資訊，沒有或查不到返回 None。先問官網映象，不通再問 GitHub 和 jsDelivr。
+    strict=True（使用者手動點"檢查更新"）時查不到就拋異常，好告訴使用者是沒新版本還是沒連上。"""
     if site:
         try:
             return check_site(current, min(timeout, 6), site)
         except (requests.RequestException, ValueError, KeyError, TypeError) as e:
-            log.info("官网查更新失败，改查 GitHub：%s", e)
+            log.info("官網查更新失敗，改查 GitHub：%s", e)
     try:
         r = requests.get(api, headers=HEADERS, timeout=timeout)
         if r.status_code == 404:
-            return None  # 还没有发布过
+            return None  # 還沒有釋出過
         r.raise_for_status()
         rel = r.json()
         version = str(rel.get("tag_name") or "").lstrip("vV")
@@ -188,22 +188,22 @@ def check(current: str, timeout: float = 8, strict: bool = False, api: str = API
         assets = rel.get("assets") or []
         setup = next((a for a in assets if FILE_RE.match(a.get("name") or "")), None)
         if not setup:
-            raise ValueError("这个版本没有安装包")
+            raise ValueError("這個版本沒有安裝包")
         digest = str(setup.get("digest") or "")
         sha = digest[7:].lower() if digest.startswith("sha256:") else _sha_from_sums(assets, setup["name"], timeout)
         if not sha or not re.fullmatch(r"[0-9a-f]{64}", sha):
-            raise ValueError("这个版本的安装包没有 SHA-256，不能安全下载")
-    except requests.RequestException as e:  # 连不上 GitHub（或被限流）：换镜像查版本号
-        log.info("GitHub 查更新失败，改查镜像：%s", e)
+            raise ValueError("這個版本的安裝包沒有 SHA-256，不能安全下載")
+    except requests.RequestException as e:  # 連不上 GitHub（或被限流）：換映象查版本號
+        log.info("GitHub 查更新失敗，改查映象：%s", e)
         try:
             return check_mirror(current, timeout, mirrors, probe_hosts)
         except (requests.RequestException, ValueError) as e2:
-            log.info("镜像也查不到：%s", e2)
+            log.info("映象也查不到：%s", e2)
             if strict:
                 raise e from e2
             return None
     except (ValueError, KeyError, TypeError) as e:
-        log.info("检查更新失败：%s", e)
+        log.info("檢查更新失敗：%s", e)
         if strict:
             raise
         return None
@@ -214,8 +214,8 @@ def check(current: str, timeout: float = 8, strict: bool = False, api: str = API
 
 def download(info: dict, progress=None, folder: Path | None = None, slow_bps: float = SLOW_BPS,
              slow_after_s: float = SLOW_AFTER_S) -> Path:
-    """下载安装包并核对 SHA-256；不一致就删掉并报错。progress(已下载字节, 总字节)。
-    下了 slow_after_s 秒平均速度还低于 slow_bps 就停下，抛 SlowDownload（国内连 GitHub 常见）。"""
+    """下載安裝包並核對 SHA-256；不一致就刪掉並報錯。progress(已下載位元組, 總位元組)。
+    下了 slow_after_s 秒平均速度還低於 slow_bps 就停下，拋 SlowDownload（國內連 GitHub 常見）。"""
     import time
     folder = Path(folder or Path(tempfile.gettempdir()) / "aramhex-update")
     folder.mkdir(parents=True, exist_ok=True)
@@ -237,15 +237,15 @@ def download(info: dict, progress=None, folder: Path | None = None, slow_bps: fl
                 if slow_bps and spent >= slow_after_s and done / spent < slow_bps and done < total:
                     f.close()
                     dest.unlink(missing_ok=True)
-                    raise SlowDownload(f"下载太慢（{done / spent / 1024:.0f}KB/s）")
+                    raise SlowDownload(f"下載太慢（{done / spent / 1024:.0f}KB/s）")
     if h.hexdigest() != info["sha256"]:
         dest.unlink(missing_ok=True)
-        raise ValueError("安装包校验失败（下载不完整或文件被改过）")
+        raise ValueError("安裝包校驗失敗（下載不完整或檔案被改過）")
     return dest
 
 
 def launch_installer(path: Path) -> None:
-    """启动安装程序（显示安装进度，装完自动重新打开助手）。调用后助手应当马上退出，让出文件。"""
+    """啟動安裝程式（顯示安裝進度，裝完自動重新開啟助手）。呼叫後助手應當馬上退出，讓出檔案。"""
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen([str(path), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True,
                      creationflags=flags, cwd=os.path.dirname(str(path)))

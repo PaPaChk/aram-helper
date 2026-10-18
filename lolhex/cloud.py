@@ -1,16 +1,16 @@
-"""云控配置：aramhex.com/config.json（网站和软件共用，改了不用发版）。
+"""雲控配置：aramhex.com/config.json（網站和軟體共用，改了不用發版）。
 
-    downloads   网盘链接 {setup, portable}（每次发版会换）
-    community   社区入口列表 [{name, text, url, qr, primary}]：QQ 群、B 站、赞助……
-                软件「关于」里全部列出；primary 的那条在主界面顶部显示成按钮（网站同理）
-    notice      公告 {id, text, url}：同一个 id 只弹一次
-    min_version 低于这个版本必须更新
-    rank        查分 {enabled, api, message}：可以远程关掉查询
-    event       当前活动 {mode, label, start, end}：例如 first-prismatic「首次必棱彩」，活动期间改用这个规则的统计数据
-    mirrors     额外线路 {update: [".../{version}"], data: [...]}：换服务器、加线路不用发版，排在内置线路前面
-    features    功能开关（预留）：{名字: true/false}
+    downloads   網盤連結 {setup, portable}（每次發版會換）
+    community   社群入口列表 [{name, text, url, qr, primary}]：QQ 群、B 站、贊助……
+                軟體「關於」裡全部列出；primary 的那條在主介面頂部顯示成按鈕（網站同理）
+    notice      公告 {id, text, url}：同一個 id 只彈一次
+    min_version 低於這個版本必須更新
+    rank        查分 {enabled, api, message}：可以遠端關掉查詢
+    event       當前活動 {mode, label, start, end}：例如 first-prismatic「首次必稜彩」，活動期間改用這個規則的統計資料
+    mirrors     額外線路 {update: [".../{version}"], data: [...]}：換伺服器、加線路不用發版，排在內建線路前面
+    features    功能開關（預留）：{名字: true/false}
 
-连不上就用上次存下的（app_home/cloud.json），再没有就用内置默认值。
+連不上就用上次存下的（app_home/cloud.json），再沒有就用內建預設值。
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ def _merge(raw: dict) -> dict:
 
 
 def get() -> dict:
-    """当前配置（不联网）。"""
+    """當前配置（不聯網）。"""
     global _cache
     with _lock:
         if _cache is None:
@@ -83,7 +83,7 @@ def get() -> dict:
 
 
 def mirrors(kind: str) -> list[str]:
-    """云控里的额外线路（update 里的 {version} 由调用方替换）。"""
+    """雲控裡的額外線路（update 裡的 {version} 由呼叫方替換）。"""
     return list((get().get("mirrors") or {}).get(kind) or [])
 
 
@@ -92,12 +92,12 @@ def community() -> list[dict]:
 
 
 def primary_link() -> dict | None:
-    """主界面顶部按钮：第一条标了 primary 且有链接的。"""
+    """主介面頂部按鈕：第一條標了 primary 且有連結的。"""
     return next((c for c in community() if c.get("primary") and c.get("url")), None)
 
 
 def event() -> dict | None:
-    """正在进行的活动 {mode, label}；没有返回 None。start / end 是带时区的 ISO 时间，空着表示不限。"""
+    """正在進行的活動 {mode, label}；沒有返回 None。start / end 是帶時區的 ISO 時間，空著表示不限。"""
     from datetime import datetime, timezone
     ev = get().get("event") or {}
     mode = str(ev.get("mode") or "").strip()
@@ -120,16 +120,16 @@ def feature(name: str, default: bool = True) -> bool:
 
 
 def refresh(timeout: float = 6, url: str = URL) -> dict:
-    """联网取最新配置并存下来；失败就返回上次的。"""
+    """聯網取最新配置並存下來；失敗就返回上次的。"""
     global _cache
     try:
         r = requests.get(url, headers={"User-Agent": f"aramhex/{__version__}"}, timeout=timeout)
         r.raise_for_status()
         raw = r.json()
         if not isinstance(raw, dict):
-            raise ValueError("格式不对")
+            raise ValueError("格式不對")
     except (requests.RequestException, ValueError) as e:
-        log.info("取云控配置失败：%s", e)
+        log.info("取雲控配置失敗：%s", e)
         return get()
     cfg = _merge(raw)
     with _lock:

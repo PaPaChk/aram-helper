@@ -1,4 +1,4 @@
-"""同一个用户只能有一个助手：用命名互斥量判断，第二个进程拿不到。"""
+"""同一個使用者只能有一個助手：用命名互斥量判斷，第二個程序拿不到。"""
 
 import subprocess
 import sys
@@ -22,7 +22,7 @@ def _other_process(name, wait_ms=0):
 def test_second_process_cannot_acquire(monkeypatch):
     monkeypatch.setattr(single_instance, "_held", [])
     name = f"lolhex-test-{uuid.uuid4().hex}"
-    assert _other_process(name) == "True"  # 没人占着：拿得到，进程退出后自动释放
+    assert _other_process(name) == "True"  # 沒人佔著：拿得到，程序退出後自動釋放
     assert single_instance.acquire(name)
     assert _other_process(name) == "False"
-    assert _other_process(name, 300) == "False"  # 等一会儿也拿不到
+    assert _other_process(name, 300) == "False"  # 等一會兒也拿不到

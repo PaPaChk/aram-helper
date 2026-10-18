@@ -10,3 +10,4 @@ onnxruntime==1.30.0
 PySide6-Essentials==6.11.2
 # 测试
 pytest
+opencc-python-reimplemented>=0.1.7

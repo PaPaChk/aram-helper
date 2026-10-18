@@ -1,4 +1,4 @@
-"""自动截图：每次三选一、每次选英雄各截一张；截图那一下浮窗临时可截，截完恢复，期间暂停识别。"""
+"""自動截圖：每次三選一、每次選英雄各截一張；截圖那一下浮窗臨時可截，截完恢復，期間暫停識別。"""
 import time
 from types import SimpleNamespace
 
@@ -38,16 +38,16 @@ def test_one_shot_per_offer_and_restores_capture(env):
     snap = {"evaluation": {"x": 1}, "offer": {"slots": ["1", "2", "3"]}}
     shot.tick(snap, "rect", None)
     run(later)
-    assert shots == [True] and not window.capture_allowed()  # 截时可截，截完恢复
-    assert engine.vision_hold_until > time.monotonic() - 1  # 截图期间暂停过识别
-    shot.tick(snap, "rect", None)  # 同一次三选一不重复截
+    assert shots == [True] and not window.capture_allowed()  # 截時可截，截完恢復
+    assert engine.vision_hold_until > time.monotonic() - 1  # 截圖期間暫停過識別
+    shot.tick(snap, "rect", None)  # 同一次三選一不重複截
     run(later)
     assert len(shots) == 1
-    shot.tick({**snap, "offer": {"slots": ["4", "5", "6"]}}, "rect", None)  # 刷新后换了三张：再截
+    shot.tick({**snap, "offer": {"slots": ["4", "5", "6"]}}, "rect", None)  # 重新整理後換了三張：再截
     run(later)
     assert len(shots) == 2
     files = sorted(p.name for p in autoshot.shots_dir().glob("*.png"))
-    assert len(files) == 2 and all(n.endswith("-三选一.png") for n in files)
+    assert len(files) == 2 and all(n.endswith("-三選一.png") for n in files)
 
 
 def test_champ_select_waits_until_labels_settle(env, monkeypatch):
@@ -57,15 +57,15 @@ def test_champ_select_waits_until_labels_settle(env, monkeypatch):
     def cs(n):
         return {"champ_select": {"team": [{"hero_id": str(i), "grade": "A"} for i in range(n)], "bench": []}}
     shot.tick(cs(2), None, "client"); run(later)
-    clock[0] += 2; shot.tick(cs(4), None, "client"); run(later)   # 还在陆续识别：不截
+    clock[0] += 2; shot.tick(cs(4), None, "client"); run(later)   # 還在陸續識別：不截
     assert not shots
-    clock[0] += 4; shot.tick(cs(4), None, "client"); run(later)   # 4 个稳定 4 秒：截
+    clock[0] += 4; shot.tick(cs(4), None, "client"); run(later)   # 4 個穩定 4 秒：截
     assert len(shots) == 1
-    clock[0] += 5; shot.tick(cs(4), None, "client"); run(later)   # 没变化：不重复截
+    clock[0] += 5; shot.tick(cs(4), None, "client"); run(later)   # 沒變化：不重複截
     assert len(shots) == 1
-    shot.tick(cs(5), None, "client"); clock[0] += 5; shot.tick(cs(5), None, "client"); run(later)  # 又多标一个：再截
+    shot.tick(cs(5), None, "client"); clock[0] += 5; shot.tick(cs(5), None, "client"); run(later)  # 又多標一個：再截
     assert len(shots) == 2
-    shot.tick({"champ_select": None}, None, None)                  # 离开选人界面：下一局重新算
+    shot.tick({"champ_select": None}, None, None)                  # 離開選人介面：下一局重新算
     shot.tick(cs(3), None, "client"); clock[0] += 5; shot.tick(cs(3), None, "client"); run(later)
     assert len(shots) == 3
 

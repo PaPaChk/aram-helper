@@ -1,12 +1,12 @@
-"""游戏机端核心调度：英雄识别、海克斯识别与推荐。**不接入 LCU**。
+"""遊戲機端核心排程：英雄識別、海克斯識別與推薦。**不接入 LCU**。
 
-线程：
-- data：启动时及定期刷新数据（腾讯官方资料；自采统计数据有新版本时下载）；
-- observer：只看窗口是否存在——客户端在前台且游戏没开时，截图识别选英雄界面：
-  头像比对认出预选栏和我方的英雄（标胜率），OCR 认出自己的英雄名；
-  可选读取游戏内 2999 接口（默认关闭）；
-- vision：游戏窗口在前台时截屏识别海克斯三选一。
-浮窗只读 snapshot()，并通过 set_hero / rescan / reset_calibration 操作。
+執行緒：
+- data：啟動時及定期重新整理資料（騰訊官方資料；自採統計資料有新版本時下載）；
+- observer：只看視窗是否存在——客戶端在前臺且遊戲沒開時，截圖識別選英雄介面：
+  頭像比對認出預選欄和我方的英雄（標勝率），OCR 認出自己的英雄名；
+  可選讀取遊戲內 2999 介面（預設關閉）；
+- vision：遊戲視窗在前臺時截圖識別海克斯三選一。
+浮窗只讀 snapshot()，並透過 set_hero / rescan / reset_calibration 操作。
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ log = logging.getLogger(__name__)
 
 
 def pick_my_hero(found: list[tuple[str, float, int]]) -> tuple[str | None, list[str]]:
-    """选英雄界面 OCR 到的英雄名 → (本人英雄, 候选)。
-    found: [(heroId, 匹配分, 文字高度)]。界面上自己的英雄名字号最大；
-    最大字号明显大于其他（≥1.3 倍）才自动认定，否则只给候选让玩家点选。"""
+    """選英雄介面 OCR 到的英雄名 → (本人英雄, 候選)。
+    found: [(heroId, 匹配分, 文字高度)]。介面上自己的英雄名字號最大；
+    最大字號明顯大於其他（≥1.3 倍）才自動認定，否則只給候選讓玩家點選。"""
     best: dict[str, tuple[float, int]] = {}
     for hid, sc, h in found:
         if hid not in best or h > best[hid][1]:
@@ -44,7 +44,7 @@ def pick_my_hero(found: list[tuple[str, float, int]]) -> tuple[str | None, list[
     return None, order[:6]
 
 
-# 国服胜率排名 → 评级：前 10% S，30% A，60% B，85% C，其余 D
+# 國服勝率排名 → 評級：前 10% S，30% A，60% B，85% C，其餘 D
 GRADES = ((0.10, "S"), (0.30, "A"), (0.60, "B"), (0.85, "C"), (1.01, "D"))
 
 
@@ -73,12 +73,12 @@ class Engine:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._rescan = threading.Event()
-        self._detector = None  # 延迟创建，避免没进游戏就加载 OCR 模型
-        self._icon_bank = None  # 英雄头像库，头像下载好后创建
+        self._detector = None  # 延遲建立，避免沒進遊戲就載入 OCR 模型
+        self._icon_bank = None  # 英雄頭像庫，頭像下載好後建立
         from .data.icons import IconCache
-        self.icons = IconCache(self.home / "data" / "img")  # 装备、召唤师技能小图标
-        self._cs_memo = None    # 选人界面各位置的识别结果缓存（champselect.Memo）
-        self.vision_hold_until = 0.0  # time.monotonic() 在这之前暂停识别（自动截图用）
+        self.icons = IconCache(self.home / "data" / "img")  # 裝備、召喚師技能小圖示
+        self._cs_memo = None    # 選人介面各位置的識別結果快取（champselect.Memo）
+        self.vision_hold_until = 0.0  # time.monotonic() 在這之前暫停識別（自動截圖用）
         self._manual_hero = False
         self._panel_cache: tuple[str | None, dict | None] = (None, None)
         self.state: dict = {
@@ -87,10 +87,10 @@ class Engine:
             "level": None, "game_window": False, "client_window": False,
             "vision": {"status": "idle", "calibrated": False, "last_scan": None, "blank": False},
             "offer": None, "evaluation": None,
-            "champ_select": None,  # {"bench": [...], "team": [...]}，每项带胜率和排名
+            "champ_select": None,  # {"bench": [...], "team": [...]}，每項帶勝率和排名
         }
 
-    # ---------- 生命周期 ----------
+    # ---------- 生命週期 ----------
 
     def start(self) -> None:
         for name, fn in (("data", self._data_loop), ("observer", self._observer_loop),
@@ -124,7 +124,7 @@ class Engine:
         self._reevaluate()
 
     def set_band(self, band: str | None) -> None:
-        """切换参考分数段（None/"" = 全体），记住选择，并按新数据重算面板和三选一推荐。"""
+        """切換參考分數段（None/"" = 全體），記住選擇，並按新資料重算面板和三選一推薦。"""
         self.settings.data_band = band or ""
         self.settings.save()
         if hasattr(self.store, "set_band"):
@@ -163,7 +163,7 @@ class Engine:
         self._panel_cache = (hid, p)
         return p
 
-    # ---------- 数据 ----------
+    # ---------- 資料 ----------
 
     def _data_loop(self) -> None:
         self._warm_up()
@@ -176,11 +176,11 @@ class Engine:
                 self._panel_cache = (None, None)
                 self._reevaluate()
             except Exception:
-                log.exception("数据刷新异常")
+                log.exception("資料重新整理異常")
             self._stop.wait(max(600.0, self.settings.refresh_hours * 3600 / 4))
 
     def _warm_up(self) -> None:
-        """启动时先用本地缓存加载头像库、预热 OCR，第一次进选人界面不用等网络和模型加载。"""
+        """啟動時先用本地快取載入頭像庫、預熱 OCR，第一次進選人介面不用等網路和模型載入。"""
         try:
             self._load_icons(download=False)
             import numpy as np
@@ -188,13 +188,14 @@ class Engine:
             import cv2
             sample = np.full((64, 256, 3), 255, np.uint8)
             cv2.putText(sample, "LolHex 123", (8, 44), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2)
-            OCR.get().recognize(sample)  # 首次推理最慢，识别和检测都先各跑一次
+            OCR.get().recognize(sample)  # 首次推理最慢，識別和檢測都先各跑一次
             OCR.get().detect(sample)
         except Exception:
-            log.exception("预热失败")
+            log.exception("預熱失敗")
 
     def _augment_matcher(self) -> NameMatcher:
-        names = {aid: a["name"] for aid, a in self.store.mayhem_augments().items()}
+        names = {aid: [a.get("name"), a.get("name_cn"), a.get("name_en"), a.get("en")]
+                 for aid, a in self.store.mayhem_augments().items()}
         return NameMatcher(names, self.settings.match_threshold)
 
     def _hero_matcher(self) -> NameMatcher:
@@ -209,9 +210,10 @@ class Engine:
     def _build_hero_matcher(self) -> NameMatcher:
         names = {}
         for hid, h in self.store.heroes.items():
-            names[hid] = h.get("name") or ""
-            names[hid + "#nick"] = h.get("nick") or ""
-            names[hid + "#full"] = f"{h.get('nick', '')} {h.get('name', '')}"
+            names[hid] = [h.get("name"), h.get("name_cn"), h.get("alias")]
+            names[hid + "#nick"] = [h.get("nick"), h.get("nick_cn")]
+            names[hid + "#full"] = [f"{h.get('nick', '')} {h.get('name', '')}",
+                                    f"{h.get('nick_cn', '')} {h.get('name_cn', '')}"]
         return NameMatcher(names, 86.0)
 
     def _load_icons(self, download: bool = True) -> None:
@@ -226,12 +228,12 @@ class Engine:
             bank = IconBank.from_dir(folder, heroes)
             if len(bank):
                 self._icon_bank = bank
-                self._cs_memo = Memo()  # 头像库变了，缓存的识别结果作废
-                log.info("英雄头像库：%d 个", len(bank))
+                self._cs_memo = Memo()  # 頭像庫變了，快取的識別結果作廢
+                log.info("英雄頭像庫：%d 個", len(bank))
 
     def hero_brief(self, hid: str) -> dict:
-        """选人界面标注用：国服胜率、按胜率的排名，以及由排名换算的评级。
-        腾讯英雄榜自带的排名掺了出场率，这里只按胜率排。"""
+        """選人介面標註用：國服勝率、按勝率的排名，以及由排名換算的評級。
+        騰訊英雄榜自帶的排名摻了出場率，這裡只按勝率排。"""
         ranks = self.store.ranks.get("heroes") or {}
         cached = getattr(self, "_win_rank", None)
         if not cached or cached[0] is not ranks:
@@ -250,7 +252,7 @@ class Engine:
         self.store.hero(hid)
         self._panel_cache = (None, None)
 
-    # ---------- 窗口状态与英雄识别 ----------
+    # ---------- 視窗狀態與英雄識別 ----------
 
     def _observer_loop(self) -> None:
         while not self._stop.is_set():
@@ -258,7 +260,7 @@ class Engine:
             try:
                 interval = self._observe_once()
             except Exception:
-                log.exception("状态读取异常")
+                log.exception("狀態讀取異常")
             self._stop.wait(interval)
 
     def _observe_once(self) -> float:
@@ -286,10 +288,10 @@ class Engine:
             return 2.0
         if phase == "client" and win.is_foreground(client):
             self._champ_select_scan(client)
-            # 画面没变的位置直接复用上次结果，所以可以扫得很勤
+            # 畫面沒變的位置直接複用上次結果，所以可以掃得很勤
             return (0.5 if self.state["champ_select"] else 1.0) * self.settings.speed_factor
         if phase == "client":
-            return 1.0  # 客户端切到后台：只查窗口不截图，切回来 1 秒内恢复
+            return 1.0  # 客戶端切到後臺：只查視窗不截圖，切回來 1 秒內恢復
         return 3.0
 
     def _set_hero_auto(self, hid: str, source: str) -> None:
@@ -299,9 +301,9 @@ class Engine:
             self._reevaluate()
 
     def _champ_select_scan(self, hwnd: int) -> None:
-        """截取客户端窗口：头像比对认出预选栏/我方英雄，OCR 认出自己的英雄名。
-        只读屏幕像素，不读客户端进程。"""
-        if time.monotonic() < self.vision_hold_until:  # 自动截图中：标注层临时可截，先不识别
+        """擷取客戶端視窗：頭像比對認出預選欄/我方英雄，OCR 認出自己的英雄名。
+        只讀螢幕畫素，不讀客戶端程序。"""
+        if time.monotonic() < self.vision_hold_until:  # 自動截圖中：標註層臨時可截，先不識別
             return
         rect = win.client_rect(hwnd)
         if not rect:
@@ -314,9 +316,9 @@ class Engine:
         cs = self.analyze_champ_select(img, (rect.left, rect.top))
         dt = time.monotonic() - t0
         if dt > 0.8:
-            log.info("选英雄：这次识别用了 %.1f 秒", dt)
+            log.info("選英雄：這次識別用了 %.1f 秒", dt)
         self._set(champ_select=cs or None)
-        if cs is False:  # 不在选英雄界面
+        if cs is False:  # 不在選英雄介面
             return
         if self._manual_hero:
             return
@@ -324,11 +326,11 @@ class Engine:
             self._set_hero_auto(cs["mine"], "ocr")
             self._set(hero_candidates=[])
         elif not cs and self._icon_bank is None:
-            self._champ_select_ocr(img)  # 头像库还没下载好时，退回整屏文字识别
+            self._champ_select_ocr(img)  # 頭像庫還沒下載好時，退回整屏文字識別
 
     def analyze_champ_select(self, img, origin: tuple[int, int] = (0, 0)):
-        """客户端截图 → 标注数据 {"bench", "team", "mine", "cards"?}；
-        不在选英雄界面返回 False，在界面但什么都没认出返回 None。"""
+        """客戶端截圖 → 標註資料 {"bench", "team", "mine", "cards"?}；
+        不在選英雄介面返回 False，在介面但什麼都沒認出返回 None。"""
         from .vision import champselect
         from .vision.ocr import OCR
         ocr = OCR.get()
@@ -336,11 +338,11 @@ class Engine:
             self._cs_memo = champselect.Memo()
         memo = self._cs_memo
         in_cs = champselect.is_champ_select(img, ocr.recognize, memo)
-        # 开局选卡时顶部预选栏被盖住、没有"可用"两个字，所以卡片按"选择你的英雄"单独判断，
-        # 否则要等点完卡、回到正常选人界面才有标注
+        # 開局選卡時頂部預選欄被蓋住、沒有"可用"兩個字，所以卡片按"選擇你的英雄"單獨判斷，
+        # 否則要等點完卡、回到正常選人介面才有標註
         cards = champselect.read_cards(img, ocr.recognize, ocr.detect, self._hero_by_name, origin, memo)
         if not in_cs and not cards:
-            return False  # 大厅、房间、商城等界面：不标注、不识别
+            return False  # 大廳、房間、商城等介面：不標註、不識別
         cs = None
         if in_cs and self._icon_bank is not None:
             got = champselect.read(img, self._icon_bank, origin, self._read_hero_name, memo)
@@ -385,7 +387,7 @@ class Engine:
         self._set(hero_id=None, hero_source=None, hero_candidates=[], level=None,
                   offer=None, evaluation=None)
 
-    # ---------- 海克斯识别 ----------
+    # ---------- 海克斯識別 ----------
 
     def _vision_loop(self) -> None:
         from .vision import capture
@@ -393,9 +395,9 @@ class Engine:
 
         last_full = last_strip = 0.0
         visible = False
-        misses = 0  # 刷新动画会短暂缺卡，连续 3 次识别不到才算关闭
+        misses = 0  # 重新整理動畫會短暫缺卡，連續 3 次識別不到才算關閉
         while not self._stop.is_set():
-            if time.monotonic() < self.vision_hold_until:  # 自动截图时浮窗临时可截：这段时间不识别，免得读到自己画的字
+            if time.monotonic() < self.vision_hold_until:  # 自動截圖時浮窗臨時可截：這段時間不識別，免得讀到自己畫的字
                 self._stop.wait(0.1)
                 continue
             if self.state["phase"] != "ingame":
@@ -426,8 +428,8 @@ class Engine:
                         last_strip = now
                         offer = det.check_strip(capture.grab(det.strip_rect(rect)), rect)
                         ran = True
-                        # 一直识别不到：整块扫描一次，防止卡片位置变了；
-                        # 还在用默认位置时照常按 bootstrap 间隔扫，本机校准过就 30 秒一次
+                        # 一直識別不到：整塊掃描一次，防止卡片位置變了；
+                        # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
                         confirmed = det.confirmed_for(rect.width, rect.height)
                         every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
                         if offer is None and not visible and now - last_full > every:
@@ -441,14 +443,14 @@ class Engine:
                     offer = None if blank else det.scan_full(frame, (rect.left, rect.top))
                     ran = True
             except Exception:
-                log.exception("识别异常")
+                log.exception("識別異常")
             self.state["vision"].update(status="scanning", calibrated=det.confirmed_for(rect.width, rect.height))
             if ran:
                 self.state["vision"]["last_scan"] = time.time()
                 if offer is not None:
                     misses = 0
                     if not visible:
-                        self._save_offer_shot(rect)  # 趁浮窗还没画上去
+                        self._save_offer_shot(rect)  # 趁浮窗還沒畫上去
                     self._on_offer(offer)
                     visible = True
                 elif visible:
@@ -461,7 +463,7 @@ class Engine:
     SHOTS_KEEP = 3
 
     def _save_offer_shot(self, rect) -> None:
-        """前几次出现三选一时存一张全屏截图（缩到 1920 宽），用来核对浮窗位置；存够就不再截。"""
+        """前幾次出現三選一時存一張全屏截圖（縮到 1920 寬），用來核對浮窗位置；存夠就不再截。"""
         folder = self.home / "shots"
         try:
             if folder.is_dir() and len(list(folder.glob("offer_*.jpg"))) >= self.SHOTS_KEEP:
@@ -469,7 +471,7 @@ class Engine:
             from .vision import capture
             frame = capture.grab(rect)
         except Exception:
-            log.exception("截图失败")
+            log.exception("截圖失敗")
             return
 
         def save():
@@ -482,7 +484,7 @@ class Engine:
                     folder.mkdir(parents=True, exist_ok=True)
                     (folder / time.strftime("offer_%Y%m%d_%H%M%S.jpg")).write_bytes(buf.tobytes())
             except Exception:
-                log.exception("截图保存失败")
+                log.exception("截圖儲存失敗")
         threading.Thread(target=save, daemon=True).start()
 
     def _on_offer(self, offer) -> None:

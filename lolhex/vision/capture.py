@@ -1,6 +1,6 @@
-"""屏幕截取：只截需要的矩形区域，返回 BGR numpy 数组。
+"""螢幕擷取：只截需要的矩形區域，返回 BGR numpy 陣列。
 
-使用 mss（GDI BitBlt）：无边框/窗口化下可用；独占全屏可能截到黑屏，界面会提示改无边框。
+使用 mss（GDI BitBlt）：無邊框/視窗化下可用；獨佔全屏可能截到黑屏，介面會提示改無邊框。
 """
 
 from __future__ import annotations
@@ -30,5 +30,5 @@ def grab(rect: Rect) -> np.ndarray:
 
 
 def is_blank(img: np.ndarray) -> bool:
-    """全黑/几乎纯色：多半是独占全屏截不到。"""
+    """全黑/幾乎純色：多半是獨佔全屏截不到。"""
     return img.size == 0 or float(img.std()) < 2.0

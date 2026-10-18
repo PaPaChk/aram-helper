@@ -1,4 +1,4 @@
-"""更新失败的兜底：整包下载太慢就停、网盘链接从官网读、各种失败都让用户去网盘下载。"""
+"""更新失敗的兜底：整包下載太慢就停、網盤連結從官網讀、各種失敗都讓使用者去網盤下載。"""
 import hashlib
 
 import pytest
@@ -39,7 +39,7 @@ def test_pan_links_from_cloud_config(monkeypatch, tmp_path):
         raise cloud.requests.ConnectionError("x")
     monkeypatch.setattr(cloud.requests, "get", boom)
     monkeypatch.setattr(cloud, "_cache", None)
-    assert update.pan_links() == {"setup": "https://pan/s"}  # 连不上：用上次存下的
+    assert update.pan_links() == {"setup": "https://pan/s"}  # 連不上：用上次存下的
 
 
 def test_download_gives_up_when_slow(monkeypatch, tmp_path):
@@ -86,14 +86,14 @@ def test_worker_offers_netdisk_on_failures(monkeypatch):
         return got
 
     def need_full(*a, **k):
-        raise patch.NeedFullInstall("第三方库变了")
+        raise patch.NeedFullInstall("第三方庫變了")
 
     def net_down(*a, **k):
-        raise update.requests.ConnectionError("连不上")
+        raise update.requests.ConnectionError("連不上")
 
     def slow(*a, **k):
         raise update.SlowDownload("慢")
 
-    assert run(net_down) == [("更新文件下载失败。", {"setup": "https://pan/s"})]
-    assert run(need_full, slow)[0][0] == "从 GitHub 下载太慢。"
-    assert run(need_full, net_down)[0][0] == "从 GitHub 下载安装包失败。"
+    assert run(net_down) == [("更新檔案下載失敗。", {"setup": "https://pan/s"})]
+    assert run(need_full, slow)[0][0] == "從 GitHub 下載太慢。"
+    assert run(need_full, net_down)[0][0] == "從 GitHub 下載安裝包失敗。"

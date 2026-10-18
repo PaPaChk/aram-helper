@@ -1,4 +1,4 @@
-"""测试夹具：腾讯官方资料用 2026-09-25 实抓并裁剪过的真实数据；统计数据用一份小的合成数据，离线构建 PublicStore。"""
+"""測試夾具：騰訊官方資料用 2026-09-25 實抓並裁剪過的真實資料；統計資料用一份小的合成資料，離線構建 PublicStore。"""
 
 from __future__ import annotations
 
@@ -32,22 +32,22 @@ def _aug(games, win):
     return {"games": games, "wins": wins, "win_rate": round(wins / games, 6), "low_sample": games < 3000}
 
 
-# 提莫（17）：腾讯把炽燃利息（2128）排黄金第 1，但带虚幻武器（1029）的胜率明显更高
+# 提莫（17）：騰訊把熾燃利息（2128）排黃金第 1，但帶虛幻武器（1029）的勝率明顯更高
 TEEMO = {"2128": _aug(30000, 0.52), "1029": _aug(40000, 0.60), "1373": _aug(20000, 0.55)}
 
 
 def make_dataset(folder: Path, snapshot_at="2026-10-13T11:56:47+08:00", patch="16.20", bands=True,
                  heroes=None, hero_augments=None, seq=0) -> dict:
-    """在 folder 写一份公开数据（和数据仓库同格式），返回清单。"""
+    """在 folder 寫一份公開資料（和資料倉儲同格式），返回清單。"""
     heroes = heroes or {"17": _hero(400000, 212000, 1), "1": _hero(300000, 147000, 2)}
     hero_augments = hero_augments or {"17": dict(TEEMO), "1": {"1029": _aug(5000, 0.47)}}
     files = {"heroes.json": heroes, "hero_augments.json": hero_augments,
              "meta.json": {"schema_version": 1, "patch": patch, "mode": "normal",
                            "matches": {"collected": 72000, "valid": 70000, "excluded": 2000},
                            "window": {"start": "2026-10-09T08:14:00+08:00", "end_exclusive": "2026-10-13T10:00:00+08:00"},
-                           "regions": ["艾欧尼亚"]}}
+                           "regions": ["艾歐尼亞"]}}
     if bands:
-        for i, b in enumerate(BANDS):  # 分段越高，提莫越强，便于断言
+        for i, b in enumerate(BANDS):  # 分段越高，提莫越強，便於斷言
             files[f"bands/{b}/heroes.json"] = {"17": _hero(1000 * (4 - i), int(1000 * (4 - i) * (0.50 + 0.02 * i))),
                                                "1": _hero(1000, 500)}
             files[f"bands/{b}/hero_augments.json"] = {"17": {"1029": _aug(500, 0.50 + 0.03 * i)}}
@@ -66,7 +66,7 @@ def make_dataset(folder: Path, snapshot_at="2026-10-13T11:56:47+08:00", patch="1
 @pytest.fixture
 def no_network(monkeypatch):
     def boom(*a, **k):
-        raise AssertionError("测试中不应联网")
+        raise AssertionError("測試中不應聯網")
     monkeypatch.setattr("lolhex.data.http.get", boom)
     monkeypatch.setattr("lolhex.data.http.head_ok", boom)
     monkeypatch.setattr("requests.get", boom)
@@ -74,7 +74,7 @@ def no_network(monkeypatch):
 
 @pytest.fixture
 def store(tmp_path, no_network):
-    """离线 PublicStore：官方静态资料、提莫的单英雄官方数据、一份内置统计数据都已就绪，且禁止联网。"""
+    """離線 PublicStore：官方靜態資料、提莫的單英雄官方資料、一份內建統計資料都已就緒，且禁止聯網。"""
     from lolhex.data import tencent
     from lolhex.data.public import PublicStore
 
@@ -101,15 +101,15 @@ def store(tmp_path, no_network):
 
 @pytest.fixture(autouse=True)
 def _no_site(monkeypatch, request):
-    """测试不连真的官网镜像；要测镜像的用例自己给地址（标记 site）。"""
+    """測試不連真的官網映象；要測映象的用例自己給地址（標記 site）。"""
     if "site" in request.keywords:
         return
     from lolhex import update
 
     def offline(*a, **k):
-        raise update.requests.ConnectionError("测试不连官网")
+        raise update.requests.ConnectionError("測試不連官網")
     monkeypatch.setattr(update, "check_site", offline)
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "site: 允许连（假的）官网镜像")
+    config.addinivalue_line("markers", "site: 允許連（假的）官網映象")

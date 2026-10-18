@@ -1,5 +1,5 @@
-"""生成程序图标：深色底的金色六边形（海克斯）+ 内部三张卡片意象。
-输出 packaging/lolhex.ico（多尺寸）与 lolhex/ui/icon.png（256px，给 Qt 用）。"""
+"""生成程式圖示：深色底的金色六邊形（海克斯）+ 內部三張卡片意象。
+輸出 packaging/lolhex.ico（多尺寸）與 lolhex/ui/icon.png（256px，給 Qt 用）。"""
 
 import math
 from pathlib import Path
@@ -18,15 +18,15 @@ def render(size: int = 1024) -> Image.Image:
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     c = s / 2
-    # 外发光
+    # 外發光
     glow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     ImageDraw.Draw(glow).polygon(hexagon(c, c, s * 0.47), fill=(231, 195, 90, 150))
     img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(s * 0.03)))
-    # 深色六边形底 + 金边
+    # 深色六邊形底 + 金邊
     d.polygon(hexagon(c, c, s * 0.46), fill=(231, 195, 90, 255))
     d.polygon(hexagon(c, c, s * 0.415), fill=(18, 24, 38, 255))
     d.polygon(hexagon(c, c, s * 0.37), outline=(98, 168, 255, 255), width=max(2, s // 64))
-    # 中间三张竖卡（三选一），中间那张高亮为金色
+    # 中間三張豎卡（三選一），中間那張高亮為金色
     w, h, gap = s * 0.13, s * 0.30, s * 0.035
     xs = [c - w * 1.5 - gap, c - w / 2, c + w / 2 + gap]
     for i, x in enumerate(xs):
@@ -36,7 +36,7 @@ def render(size: int = 1024) -> Image.Image:
         d.rounded_rectangle([x, y, x + w, y + hh], radius=s * 0.02, fill=col)
         d.rounded_rectangle([x + s * 0.02, y + s * 0.02, x + w - s * 0.02, y + hh * 0.45], radius=s * 0.012,
                             fill=(18, 24, 38, 255))
-    # 顶部小菱形（海克斯核心）
+    # 頂部小菱形（海克斯核心）
     d.polygon([(c, c - s * 0.30), (c + s * 0.035, c - s * 0.255), (c, c - s * 0.21), (c - s * 0.035, c - s * 0.255)],
               fill=(255, 236, 170, 255))
     return img

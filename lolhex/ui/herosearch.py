@@ -1,4 +1,4 @@
-"""手动选英雄的搜索补全：名字、称号之外，别名和拼音缩写也能搜到（提百万、快乐风男、tm）。"""
+"""手動選英雄的搜尋補全：名字、稱號之外，別名和拼音縮寫也能搜到（提百萬、快樂風男、tm）。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from PySide6.QtWidgets import QCompleter
 
 
 def hero_completer(store, parent=None) -> tuple[QCompleter, dict[str, str]]:
-    """返回补全器和 {补全文字: 英雄 id}。下拉里显示"提莫 迅捷斥候（提百万）"，
-    按包含关系匹配名字、称号、中文别名和英文/拼音关键词。"""
+    """返回補全器和 {補全文字: 英雄 id}。下拉里顯示"提莫 迅捷斥候（提百萬）"，
+    按包含關係匹配名字、稱號、中文別名和英文/拼音關鍵詞。"""
     rows, names = [], {}
     for hid, h in store.heroes.items():
         base = f"{h['name']} {h['nick']}"
@@ -19,7 +19,7 @@ def hero_completer(store, parent=None) -> tuple[QCompleter, dict[str, str]]:
         names[key] = hid
         rows.append((base + (f"（{'、'.join(cn)}）" if cn else ""), key))
     comp = QCompleter(parent)
-    model = QStandardItemModel(comp)  # 挂在补全器上，免得函数返回后被回收
+    model = QStandardItemModel(comp)  # 掛在補全器上，免得函式返回後被回收
     for display, key in sorted(rows):
         item = QStandardItem(display)
         item.setData(key, Qt.UserRole)

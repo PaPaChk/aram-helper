@@ -1,9 +1,9 @@
-"""RapidOCR（PaddleOCR 模型的 ONNX 版）封装，离线运行。
+"""RapidOCR（PaddleOCR 模型的 ONNX 版）封裝，離線執行。
 
-两种用法：
-- detect(img)：检测+识别，找出画面中所有文字行（约 0.3–0.5s，仅在未校准时用）；
-- recognize(img)：已知文字区域时只做识别（每块约 10–20ms）。
-模型首次使用时加载（约 0.5s），之后常驻。
+兩種用法：
+- detect(img)：檢測+識別，找出畫面中所有文字行（約 0.3–0.5s，僅在未校準時用）；
+- recognize(img)：已知文字區域時只做識別（每塊約 10–20ms）。
+模型首次使用時載入（約 0.5s），之後常駐。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 class TextLine:
     text: str
     score: float
-    box: tuple[int, int, int, int]  # x0, y0, x1, y1（相对输入图）
+    box: tuple[int, int, int, int]  # x0, y0, x1, y1（相對輸入圖）
 
     @property
     def cx(self) -> float:

@@ -1,4 +1,4 @@
-"""官网镜像 latest.json：有就用（带安装包地址和 SHA-256），不通再走 GitHub。"""
+"""官網映象 latest.json：有就用（帶安裝包地址和 SHA-256），不通再走 GitHub。"""
 import pytest
 
 from lolhex import update
@@ -20,7 +20,7 @@ class Resp:
 
 @pytest.mark.site
 def test_site_gives_full_info(monkeypatch):
-    j = {"version": "1.0.1", "notes": "修复", "setup": {"name": "AramHex-Setup-1.0.1.exe", "sha256": SHA, "size": 5,
+    j = {"version": "1.0.1", "notes": "修復", "setup": {"name": "AramHex-Setup-1.0.1.exe", "sha256": SHA, "size": 5,
                                                         "url": "https://github.com/x/AramHex-Setup-1.0.1.exe"}}
     monkeypatch.setattr(update.requests, "get", lambda url, **k: Resp(j))
     info = update.check("1.0.0", site="https://site/u/latest.json")

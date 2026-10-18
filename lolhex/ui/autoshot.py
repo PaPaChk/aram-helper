@@ -1,7 +1,7 @@
-"""自动截图：海克斯三选一和选英雄时，自动保存一张整屏截图（含助手画的浮窗和标注）。
+"""自動截圖：海克斯三選一和選英雄時，自動儲存一張整屏截圖（含助手畫的浮窗和標註）。
 
-浮窗平时不会被截进去（见 vision/window.py）。截图那一下临时放开，截完马上恢复；
-这段时间识别暂停（engine.vision_hold_until），免得把自己画的字当成游戏内容。
+浮窗平時不會被截進去（見 vision/window.py）。截圖那一下臨時放開，截完馬上恢復；
+這段時間識別暫停（engine.vision_hold_until），免得把自己畫的字當成遊戲內容。
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from ..config import app_home
 from ..vision import window as win
 
 log = logging.getLogger(__name__)
-KEEP = 300                # 最多留这么多张，多了删最早的
-SETTLE_MS = {"三选一": 900, "选英雄": 300}  # 推荐和标注画出来以后再截
-CS_STABLE_S = 4.0         # 选英雄：标出来的英雄数这么久没再增加才截（队友陆续选好、识别完）
-HOLD_S = 0.8              # 截图前后暂停识别的时间
+KEEP = 300                # 最多留這麼多張，多了刪最早的
+SETTLE_MS = {"三選一": 900, "選英雄": 300}  # 推薦和標註畫出來以後再截
+CS_STABLE_S = 4.0         # 選英雄：標出來的英雄數這麼久沒再增加才截（隊友陸續選好、識別完）
+HOLD_S = 0.8              # 截圖前後暫停識別的時間
 
 
 def shots_dir() -> Path:
@@ -32,13 +32,13 @@ def shots_dir() -> Path:
 class AutoShot:
     def __init__(self, engine):
         self.engine = engine
-        self._offer_key = None   # 已经截过的三选一（三张海克斯）
-        self._cs_shot = 0        # 这次选英雄截图时标了几个英雄
-        self._cs_seen = (0, 0.0)  # (标出来的英雄数, 这个数第一次出现的时间)
+        self._offer_key = None   # 已經截過的三選一（三張海克斯）
+        self._cs_shot = 0        # 這次選英雄截圖時標了幾個英雄
+        self._cs_seen = (0, 0.0)  # (標出來的英雄數, 這個數第一次出現的時間)
         self._busy = False
 
     def tick(self, snap: dict, game_rect, client_rect) -> None:
-        """浮窗每次刷新时调用：出现新的三选一推荐、或进入选英雄界面，就安排截一张。"""
+        """浮窗每次重新整理時呼叫：出現新的三選一推薦、或進入選英雄介面，就安排截一張。"""
         if not self.engine.settings.auto_screenshot:
             return
         ev, offer = snap.get("evaluation"), snap.get("offer")
@@ -46,7 +46,7 @@ class AutoShot:
             key = tuple(offer.get("slots") or [])
             if key != self._offer_key and any(key):
                 self._offer_key = key
-                self._schedule(game_rect, "三选一")
+                self._schedule(game_rect, "三選一")
         elif not offer:
             self._offer_key = None
         cs = snap.get("champ_select")
@@ -56,8 +56,8 @@ class AutoShot:
             if n != self._cs_seen[0]:
                 self._cs_seen = (n, now)
             elif n > self._cs_shot and now - self._cs_seen[1] >= CS_STABLE_S:
-                self._cs_shot = n  # 后面又多标出英雄时再截一张
-                self._schedule(client_rect, "选英雄")
+                self._cs_shot = n  # 後面又多標出英雄時再截一張
+                self._schedule(client_rect, "選英雄")
         elif not cs:
             self._cs_shot, self._cs_seen = 0, (0, 0.0)
 
@@ -71,7 +71,7 @@ class AutoShot:
         self.engine.vision_hold_until = time.monotonic() + HOLD_S
         self._restore = win.capture_allowed()
         win.set_capture_allowed(True)
-        QTimer.singleShot(200, lambda: self._grab(rect, kind))  # 等窗口属性生效
+        QTimer.singleShot(200, lambda: self._grab(rect, kind))  # 等視窗屬性生效
 
     def _grab(self, rect, kind: str) -> None:
         try:
@@ -82,13 +82,13 @@ class AutoShot:
             if not capture.is_blank(img):
                 ok, buf = cv2.imencode(".png", img)
                 if ok:
-                    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]  # 带毫秒：连着刷新也不会互相覆盖
+                    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]  # 帶毫秒：連著重新整理也不會互相覆蓋
                     path = shots_dir() / f"{stamp}-{kind}.png"
                     path.write_bytes(buf.tobytes())
-                    log.info("自动截图：%s", path.name)
+                    log.info("自動截圖：%s", path.name)
                     self._prune()
         except Exception:
-            log.exception("自动截图失败")
+            log.exception("自動截圖失敗")
         finally:
             win.set_capture_allowed(self._restore or self.engine.settings.allow_capture)
             self._busy = False

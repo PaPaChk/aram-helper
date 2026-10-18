@@ -1,4 +1,4 @@
-"""公开数据源的最小 HTTP 封装：超时、重试、限速。"""
+"""公開資料來源的最小 HTTP 封裝：超時、重試、限速。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _session = requests.Session()
 _session.headers.update({"User-Agent": UA, "Accept": "application/json,*/*"})
 _lock = threading.Lock()
 _last_request = 0.0
-# 两次请求之间至少间隔多少秒；所有数据源共用，保证低频。
+# 兩次請求之間至少間隔多少秒；所有資料來源共用，保證低頻。
 MIN_INTERVAL = 0.35
 
 
@@ -46,7 +46,7 @@ def get(url: str, *, timeout: float = 20, retries: int = 2, referer: str | None 
             last = FetchError(f"HTTP {r.status_code} {url}")
             if r.status_code in (403, 404):
                 break
-        except requests.RequestException as e:  # 连接错误、超时
+        except requests.RequestException as e:  # 連線錯誤、超時
             last = e
         time.sleep(0.8 * (attempt + 1))
     raise FetchError(str(last))
@@ -54,12 +54,12 @@ def get(url: str, *, timeout: float = 20, retries: int = 2, referer: str | None 
 
 def get_json(url: str, **kw):
     r = get(url, **kw)
-    # 腾讯部分 .js 文件本身就是 JSON；统一用 utf-8 解。
+    # 騰訊部分 .js 檔案本身就是 JSON；統一用 utf-8 解。
     return json.loads(r.content.decode("utf-8-sig"))
 
 
 def fetch(url: str, *, timeout: float = 30, headers: dict | None = None, on_bytes=None) -> bytes:
-    """边下边报进度的下载（更新文件、统计数据用）：每收到一块就调 on_bytes(这一块的字节数)。"""
+    """邊下邊報進度的下載（更新檔案、統計資料用）：每收到一塊就調 on_bytes(這一塊的位元組數)。"""
     with requests.get(url, headers=headers, timeout=timeout, stream=True) as r:
         r.raise_for_status()
         chunks = []

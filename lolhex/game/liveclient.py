@@ -1,6 +1,6 @@
-"""游戏内 Live Client Data API（https://127.0.0.1:2999），只读、无需凭据。
+"""遊戲內 Live Client Data API（https://127.0.0.1:2999），只讀、無需憑據。
 
-国服是否开放以实测为准；读不到时返回 None，由上层退回其他方式。
+國服是否開放以實測為準；讀不到時返回 None，由上層退回其他方式。
 """
 
 from __future__ import annotations

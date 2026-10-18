@@ -1,14 +1,14 @@
-"""海克斯三选一画面的识别与低负载跟踪。
+"""海克斯三選一畫面的識別與低負載跟蹤。
 
-怎么判定"现在要选海克斯"：不依赖固定坐标，而是看画面里是否同时出现
-≥2 个能匹配到海克斯字典的文字，且它们在同一水平线上、左右排开。
+怎麼判定"現在要選海克斯"：不依賴固定座標，而是看畫面裡是否同時出現
+≥2 個能匹配到海克斯字典的文字，且它們在同一水平線上、左右排開。
 
-负载控制分三级：
-1. 未校准：每 bootstrap_interval 秒截取画面中部，缩小后做一次"检测+识别"（约 0.3–0.5s）。
-   一旦完整识别到三张，就记住三个标题的位置（按窗口比例保存，换分辨率自动失效）。
-2. 已校准：每 scan_interval 只截三个标题所在的一条窄带；先算缩略图指纹，
-   和上次一样就直接复用结果（几乎零开销）；变了才对三个小块做"仅识别"（每块约 10–20ms）。
-3. 已校准但识别不到：说明没在选海克斯，保持第 2 级的轻量检查。
+負載控制分三級：
+1. 未校準：每 bootstrap_interval 秒擷取畫面中部，縮小後做一次"檢測+識別"（約 0.3–0.5s）。
+   一旦完整識別到三張，就記住三個標題的位置（按視窗比例儲存，換解析度自動失效）。
+2. 已校準：每 scan_interval 只截三個標題所在的一條窄帶；先算縮圖指紋，
+   和上次一樣就直接複用結果（幾乎零開銷）；變了才對三個小塊做"僅識別"（每塊約 10–20ms）。
+3. 已校準但識別不到：說明沒在選海克斯，保持第 2 級的輕量檢查。
 """
 
 from __future__ import annotations
@@ -27,27 +27,27 @@ from .window import Rect
 
 log = logging.getLogger(__name__)
 
-# 未校准时扫描的区域（相对窗口）：三张卡片都在屏幕中部。
+# 未校準時掃描的區域（相對視窗）：三張卡片都在螢幕中部。
 BAND = (0.12, 0.10, 0.88, 0.85)  # x0, y0, x1, y1
-DETECT_MAX_W = 1600               # 检测前把区域缩到这个宽度以内（4K 下约缩一半）
-REC_HEIGHT = 48                   # 识别前把标题块缩放到这个高度
-# 没有本机校准时先用的默认标题位置：国服 4K（16:9）实机多次校准的结果，按窗口比例。
-# 游戏界面按高度缩放、水平居中，其他宽高比按这个规律换算。猜错了也没关系：
-# 识别不到就照常整块扫描，扫到三张后换成本机的校准结果。
+DETECT_MAX_W = 1600               # 檢測前把區域縮到這個寬度以內（4K 下約縮一半）
+REC_HEIGHT = 48                   # 識別前把標題塊縮放到這個高度
+# 沒有本機校準時先用的預設標題位置：國服 4K（16:9）實機多次校準的結果，按視窗比例。
+# 遊戲介面按高度縮放、水平居中，其他寬高比按這個規律換算。猜錯了也沒關係：
+# 識別不到就照常整塊掃描，掃到三張後換成本機的校準結果。
 DEFAULT_BOXES = [(0.2309, 0.3869, 0.3923, 0.4335), (0.4231, 0.3869, 0.5845, 0.4335),
                  (0.6152, 0.3869, 0.7767, 0.4335)]
 
 
 @dataclass
 class Calibration:
-    """三个标题框，存为相对窗口的比例坐标 (x0, y0, x1, y1)。guess：默认位置，还没在本机确认过。"""
+    """三個標題框，存為相對視窗的比例座標 (x0, y0, x1, y1)。guess：預設位置，還沒在本機確認過。"""
     boxes: list[tuple[float, float, float, float]]
     size: tuple[int, int]
     guess: bool = False
 
     @classmethod
     def default(cls, w: int, h: int) -> "Calibration":
-        k = (16 / 9) * h / max(1, w)  # 16:9 → 1；更宽的屏幕卡片往中间收
+        k = (16 / 9) * h / max(1, w)  # 16:9 → 1；更寬的螢幕卡片往中間收
         boxes = [(0.5 + (x0 - 0.5) * k, y0, 0.5 + (x1 - 0.5) * k, y1) for x0, y0, x1, y1 in DEFAULT_BOXES]
         return cls(boxes, (w, h), guess=True)
 
@@ -60,7 +60,7 @@ class Offer:
     slots: list[str | None]
     texts: list[str]
     scores: list[float]
-    boxes: list[tuple[int, int, int, int] | None]  # 屏幕坐标下的标题框
+    boxes: list[tuple[int, int, int, int] | None]  # 螢幕座標下的標題框
     at: float = field(default_factory=time.time)
 
     def key(self) -> tuple:
@@ -86,7 +86,7 @@ def fingerprint(img: np.ndarray) -> np.ndarray:
 
 
 def fp_changed(a: np.ndarray | None, b: np.ndarray) -> bool:
-    """只换了一张卡时整体均值变化很小，所以看局部：任一格子明显变化就算变了。"""
+    """只換了一張卡時整體均值變化很小，所以看區域性：任一格子明顯變化就算變了。"""
     if a is None or a.shape != b.shape:
         return True
     d = np.abs(a - b)
@@ -125,7 +125,7 @@ class AugmentDetector:
         return self.calibrated_for(w, h) and not self.calibration.guess
 
     def ensure_calibration(self, w: int, h: int) -> None:
-        """这个窗口大小还没校准过：先用默认位置，第一次选海克斯就能走轻量检查。"""
+        """這個視窗大小還沒校準過：先用預設位置，第一次選海克斯就能走輕量檢查。"""
         if not self.calibrated_for(w, h):
             self.calibration = Calibration.default(w, h)
             self._last_fp = None
@@ -141,10 +141,10 @@ class AugmentDetector:
             self.calib_path.write_text(json.dumps({"boxes": self.calibration.boxes,
                                                    "size": self.calibration.size}), encoding="utf-8")
 
-    # ---------- 1. 全区域扫描 ----------
+    # ---------- 1. 全區域掃描 ----------
 
     def scan_full(self, frame: np.ndarray, origin: tuple[int, int] = (0, 0)) -> Offer | None:
-        """frame 为整个游戏客户区。找到 ≥2 张卡返回 Offer；3 张齐全时顺便校准。"""
+        """frame 為整個遊戲客戶區。找到 ≥2 張卡返回 Offer；3 張齊全時順便校準。"""
         H, W = frame.shape[:2]
         x0, y0, x1, y1 = int(BAND[0] * W), int(BAND[1] * H), int(BAND[2] * W), int(BAND[3] * H)
         band = frame[y0:y1, x0:x1]
@@ -169,11 +169,11 @@ class AugmentDetector:
 
     @staticmethod
     def _pick_row(hits, H):
-        """同一水平线上、横向分开的匹配项；一张卡只取分数最高的一条。"""
+        """同一水平線上、橫向分開的匹配項；一張卡只取分數最高的一條。"""
         best: list = []
         for ln, _, _ in hits:
             row = [t for t in hits if abs(t[0].cy - ln.cy) < 0.03 * H]
-            # 同一张卡上可能匹配到多行（标题 + 描述里提到别的海克斯名），按横向距离去重。
+            # 同一張卡上可能匹配到多行（標題 + 描述裡提到別的海克斯名），按橫向距離去重。
             row.sort(key=lambda t: -t[2])
             uniq: list = []
             for t in row:
@@ -185,7 +185,7 @@ class AugmentDetector:
 
     @staticmethod
     def _assign_columns(group, W):
-        """把识别到的卡片放进左/中/右三个位置。只有两张时按左右对称推断缺的是哪张。"""
+        """把識別到的卡片放進左/中/右三個位置。只有兩張時按左右對稱推斷缺的是哪張。"""
         slots: list[str | None] = [None, None, None]
         texts = ["", "", ""]
         scores = [0.0, 0.0, 0.0]
@@ -197,7 +197,7 @@ class AugmentDetector:
             mid = W / 2
             gap = b - a
             if abs((a + b) / 2 - mid) < 0.25 * gap:
-                idx = [0, 2]          # 左右两张，中间缺
+                idx = [0, 2]          # 左右兩張，中間缺
             elif abs(a - mid) < 0.25 * gap:
                 idx = [1, 2]          # 中、右
             else:
@@ -216,12 +216,12 @@ class AugmentDetector:
         boxes = [((c - half_w) / W, (cy - half_h) / H, (c + half_w) / W, (cy + half_h) / H) for c in centers]
         self.calibration = Calibration(boxes, (W, H))
         self._save_calibration()
-        log.info("已校准三选一标题位置：%s @ %dx%d", boxes, W, H)
+        log.info("已校準三選一標題位置：%s @ %dx%d", boxes, W, H)
 
-    # ---------- 2. 已校准的轻量检查 ----------
+    # ---------- 2. 已校準的輕量檢查 ----------
 
     def strip_rect(self, win: Rect) -> Rect | None:
-        """三个标题框的外接矩形（屏幕坐标），只截这一条。"""
+        """三個標題框的外接矩形（螢幕座標），只截這一條。"""
         if not self.calibrated_for(win.width, win.height):
             return None
         pb = self.calibration.pixel_boxes(win.width, win.height)
@@ -230,7 +230,7 @@ class AugmentDetector:
         return Rect(win.left + x0, win.top + y0, x1 - x0, y1 - y0)
 
     def check_strip(self, strip: np.ndarray, win: Rect) -> Offer | None:
-        """strip 为 strip_rect 截图。画面没变化时直接复用上次结果。"""
+        """strip 為 strip_rect 截圖。畫面沒變化時直接複用上次結果。"""
         fp = fingerprint(strip)
         if not fp_changed(self._last_fp, fp):
             return self._last_result
@@ -250,13 +250,13 @@ class AugmentDetector:
             boxes.append((win.left + x0, win.top + y0, win.left + x1, win.top + y1))
         offer = Offer(slots, texts, scores, boxes)
         if self.calibration.guess and offer.matched() == 3:
-            self.calibration.guess = False  # 默认位置在本机对上了，存下来
+            self.calibration.guess = False  # 預設位置在本機對上了，存下來
             self._save_calibration()
         self._last_result = offer if offer.matched() >= 2 else None
         return self._last_result
 
     def column_of(self, x: int, y: int, win: Rect) -> int | None:
-        """屏幕坐标 (x, y) 落在哪张卡的竖列上；用于记录玩家点了哪张。"""
+        """螢幕座標 (x, y) 落在哪張卡的豎列上；用於記錄玩家點了哪張。"""
         if not self.calibrated_for(win.width, win.height):
             return None
         pb = self.calibration.pixel_boxes(win.width, win.height)

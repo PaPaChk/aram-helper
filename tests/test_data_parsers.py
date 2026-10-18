@@ -7,12 +7,12 @@ def test_hero_hex_augments_have_rarity_rank_and_tier():
     d = tencent.parse_hero_hex(fixture("tencent_hero17.json"))
     assert d["date"] == "20260924"
     by_id = {a["id"]: a for a in d["augments"]}
-    burn = by_id["2128"]  # 炽燃利息：提莫黄金第 1，总榜第 1
+    burn = by_id["2128"]  # 熾燃利息：提莫黃金第 1，總榜第 1
     assert burn["rarity"] == "gold" and burn["rank"] == 1 and burn["tier"] == "S"
     assert burn["overall_rank"] == 1 and abs(burn["pick"] - 0.2546) < 1e-6
     rarities = {a["rarity"] for a in d["augments"]}
     assert rarities == {"silver", "gold", "prismatic"}
-    # 每个稀有度内名次从 1 连续编号
+    # 每個稀有度內名次從 1 連續編號
     for r in rarities:
         ranks = sorted(a["rank"] for a in d["augments"] if a["rarity"] == r)
         assert ranks == list(range(1, len(ranks) + 1))
@@ -25,7 +25,7 @@ def test_hero_hex_builds_and_skills():
     assert b["core"][0]["items"] == ["3118", "6653", "4645"] and abs(b["core"][0]["win"] - 0.499) < 1e-6
     assert b["shoes"][0]["item"] == "3020"
     assert b["start"][0]["items"] == ["1042", "3113"]
-    assert b["first"][0]["item"] == "6653" and abs(b["first"][0]["pick"] - 0.8267) < 1e-6  # showrate 是出场率
+    assert b["first"][0]["item"] == "6653" and abs(b["first"][0]["pick"] - 0.8267) < 1e-6  # showrate 是出場率
     assert 0 < b["core"][0]["pick"] < 1
     s = d["skills"][0]
     assert s["max"] == ["Q", "E", "W"]

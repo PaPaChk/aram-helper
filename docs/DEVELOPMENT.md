@@ -1,43 +1,43 @@
-# 开发与发版
+# 開發與發版
 
-## 目录
+## 目錄
 
 ```
 lolhex/
   __main__.py          入口（python -m lolhex）
-  engine.py            调度：窗口状态、选人识别、三选一识别、推荐
-  config.py            配置文件和目录（安装版 %APPDATA%\AramHex，便携版 程序目录\userdata）
-  update.py            程序更新：查 GitHub Releases 有没有新版本（连不上时查 jsDelivr）
-  patch.py             增量更新：只下载变了的文件（updates 分支，GitHub / jsDelivr），退出后替换，失败还原
-  recommend.py         三选一评分
-  panel.py             单英雄面板（胜率、出装、加点、海克斯表）
+  engine.py            排程：視窗狀態、選人識別、三選一識別、推薦
+  config.py            配置檔案和目錄（安裝版 %APPDATA%\AramHex，便攜版 程式目錄\userdata）
+  update.py            程式更新：查 GitHub Releases 有沒有新版本（連不上時查 jsDelivr）
+  patch.py             增量更新：只下載變了的檔案（updates 分支，GitHub / jsDelivr），退出後替換，失敗還原
+  recommend.py         三選一評分
+  panel.py             單英雄面板（勝率、出裝、加點、海克斯表）
   data/
-    store.py           腾讯官方资料（运行时获取，落盘缓存）
-    public.py          自采统计数据：内置 + 从数据仓库下载更新，逐文件校验 SHA-256；分数段切换
-    tencent.py         腾讯接口和解析
-    bundled/           内置统计数据（scripts/update_data.py 生成，不要手改）
-  vision/              截屏、选人界面识别、三选一识别、OCR
-  ui/                  主窗口、托盘、游戏内浮窗
-scripts/update_data.py 把数据仓库最新的一份放进 lolhex/data/bundled/
-packaging/             PyInstaller、Inno Setup、打包脚本
+    store.py           騰訊官方資料（執行時獲取，落盤快取）
+    public.py          自採統計資料：內建 + 從資料倉儲下載更新，逐檔案校驗 SHA-256；分數段切換
+    tencent.py         騰訊介面和解析
+    bundled/           內建統計資料（scripts/update_data.py 生成，不要手改）
+  vision/              截圖、選人介面識別、三選一識別、OCR
+  ui/                  主視窗、托盤、遊戲內浮窗
+scripts/update_data.py 把資料倉儲最新的一份放進 lolhex/data/bundled/
+packaging/             PyInstaller、Inno Setup、打包指令碼
 ```
 
-## 原则
+## 原則
 
-- **不接入客户端（LCU）、不读内存、不注入、不模拟按键或鼠标**。只截屏识别、显示数据。
-  - 浮窗点完以后把前台还给游戏，只调用 `SetForegroundWindow`，不发任何输入。
-  - 游戏内 2999 接口是 Riot 官方的只读接口，默认关闭。
-- 统计数据只用数据仓库的公开格式，见 `lolhex/data/public.py` 顶部说明。改格式要升 `schema_version`，并且两个仓库一起改。
-- 网络失败不能影响使用：官方资料用上次的缓存，统计数据用内置的那份，检查更新失败时不打扰用户。
+- **不接入客戶端（LCU）、不讀記憶體、不注入、不模擬按鍵或滑鼠**。只截圖識別、顯示資料。
+  - 浮窗點完以後把前臺還給遊戲，只呼叫 `SetForegroundWindow`，不發任何輸入。
+  - 遊戲內 2999 介面是 Riot 官方的只讀介面，預設關閉。
+- 統計資料只用資料倉儲的公開格式，見 `lolhex/data/public.py` 頂部說明。改格式要升 `schema_version`，並且兩個倉庫一起改。
+- 網路失敗不能影響使用：官方資料用上次的快取，統計資料用內建的那份，檢查更新失敗時不打擾使用者。
 
-## 测试
+## 測試
 
 ```powershell
 $env:QT_QPA_PLATFORM = 'offscreen'
 .venv\Scripts\python -m pytest
 ```
 
-测试不联网（`conftest.py` 的 `no_network`）。需要 HTTP 的测试在本机起临时服务。
+測試不聯網（`conftest.py` 的 `no_network`）。需要 HTTP 的測試在本機起臨時服務。
 
 ## 打包
 
@@ -46,38 +46,38 @@ $env:QT_QPA_PLATFORM = 'offscreen'
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -r requirements-build.txt
-.venv\Scripts\python scripts\update_data.py          # 更新内置数据
+.venv\Scripts\python scripts\update_data.py          # 更新內建資料
 pwsh -NoProfile -File packaging\build.ps1
 ```
 
-输出在 `build/release/`：
+輸出在 `build/release/`：
 - `AramHex-Setup-<版本>.exe`
 - `AramHex-Portable-<版本>.zip`
 - `SHA256SUMS.txt`
 
-打包时会先校验内置数据，再用真实的 Windows 窗口插件跑一遍 Qt 自检，自检不过不生成安装包。
+打包時會先校驗內建資料，再用真實的 Windows 視窗外掛跑一遍 Qt 自檢，自檢不過不生成安裝包。
 
-## 发版
+## 發版
 
-1. 更新内置数据：`python scripts/update_data.py`，然后提交。
-2. 改 `lolhex/__init__.py` 的 `__version__`，在 `CHANGELOG.md` 写这一版的说明。
-   - 说明是写给玩家看的（发布页和软件里的「有新版本」提示都显示它）：一两句大白话，只写更新了什么、修了什么问题，比如「更新时能看到下载进度了」「修复：……」。不写技术细节、文件名、数字口径。
-3. 提交，然后打 tag 并推送：`git tag v1.2.3 && git push origin v1.2.3`。
-4. GitHub Actions（`.github/workflows/release.yml`）自动完成：
-   - 跑测试、打包；
-   - 核对 tag 和 `__version__` 一致；
-   - 把增量更新的清单和文件（另有 .gz 压缩版，jsDelivr 不给下 .exe）推到 `updates` 分支，并打 tag `updates-v<版本>`（先于建 Release）；
-   - 建 Release，上传安装版、便携版和 `SHA256SUMS.txt`；
-   - Release 说明取 `CHANGELOG.md` 里这一版的内容。
-5. 已安装的助手启动时、再次打开时、每 30 分钟查一次 Releases 的 latest，有新版本就提示。
+1. 更新內建資料：`python scripts/update_data.py`，然後提交。
+2. 改 `lolhex/__init__.py` 的 `__version__`，在 `CHANGELOG.md` 寫這一版的說明。
+   - 說明是寫給玩家看的（釋出頁和軟體裡的「有新版本」提示都顯示它）：一兩句大白話，只寫更新了什麼、修了什麼問題，比如「更新時能看到下載進度了」「修復：……」。不寫技術細節、檔名、數字口徑。
+3. 提交，然後打 tag 並推送：`git tag v1.2.3 && git push origin v1.2.3`。
+4. GitHub Actions（`.github/workflows/release.yml`）自動完成：
+   - 跑測試、打包；
+   - 核對 tag 和 `__version__` 一致；
+   - 把增量更新的清單和檔案（另有 .gz 壓縮版，jsDelivr 不給下 .exe）推到 `updates` 分支，並打 tag `updates-v<版本>`（先於建 Release）；
+   - 建 Release，上傳安裝版、便攜版和 `SHA256SUMS.txt`；
+   - Release 說明取 `CHANGELOG.md` 裡這一版的內容。
+5. 已安裝的助手啟動時、再次開啟時、每 30 分鐘查一次 Releases 的 latest，有新版本就提示。
 
-只更新统计数据、不改程序时，不用发版：数据仓库更新后，助手会自己下载新数据。
-定期发版只是为了让新下载的用户拿到较新的内置数据。
+只更新統計資料、不改程式時，不用發版：資料倉儲更新後，助手會自己下載新資料。
+定期發版只是為了讓新下載的使用者拿到較新的內建資料。
 
-## 国内连不上 GitHub 时
+## 國內連不上 GitHub 時
 
-- jsDelivr 按分支名（`@main`、`@updates`）取文件会缓存好几个小时，刷新也不一定生效；按 tag 取是即时的。所以：
-  - 程序：发版打 tag `updates-v<版本>`；助手按"下一个版本号"（补丁、次版本、主版本各加 1）试探这个 tag 是否存在，找到后从 tag 下载增量更新。
-  - 统计数据：数据仓库每次更新打 tag `data-v<序号>`（`latest.json` 的 `seq`）；助手按"下一个序号"试探。
-- jsDelivr 单个文件不能超过 20MB，整个分支或 tag 不能超过 150MB；`.exe` 文件会被拒绝（403），所以增量更新文件都另存一份 `.gz`。
-- 完整安装包（86MB）放不进 jsDelivr，只能从 GitHub 下载，或者手动下载。
+- jsDelivr 按分支名（`@main`、`@updates`）取檔案會快取好幾個小時，重新整理也不一定生效；按 tag 取是即時的。所以：
+  - 程式：發版打 tag `updates-v<版本>`；助手按"下一個版本號"（補丁、次版本、主版本各加 1）試探這個 tag 是否存在，找到後從 tag 下載增量更新。
+  - 統計資料：資料倉儲每次更新打 tag `data-v<序號>`（`latest.json` 的 `seq`）；助手按"下一個序號"試探。
+- jsDelivr 單個檔案不能超過 20MB，整個分支或 tag 不能超過 150MB；`.exe` 檔案會被拒絕（403），所以增量更新檔案都另存一份 `.gz`。
+- 完整安裝包（86MB）放不進 jsDelivr，只能從 GitHub 下載，或者手動下載。

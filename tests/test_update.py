@@ -1,4 +1,4 @@
-"""程序更新：版本比较、GitHub Releases 接口解析、SHA-256 来源、下载校验。"""
+"""程式更新：版本比較、GitHub Releases 介面解析、SHA-256 來源、下載校驗。"""
 
 import hashlib
 import json
@@ -15,7 +15,7 @@ BODY = b"installer-bytes"
 
 @pytest.fixture
 def gh():
-    """本地模拟 GitHub：/latest 返回 release JSON，/dl/<文件> 返回内容。"""
+    """本地模擬 GitHub：/latest 返回 release JSON，/dl/<檔案> 返回內容。"""
     state = {"release": None, "files": {}}
 
     class H(BaseHTTPRequestHandler):
@@ -54,7 +54,7 @@ def _release(base, version="9.9.9", digest=True, sums=False):
               {"name": f"AramHex-Portable-{version}.zip", "size": 1, "browser_download_url": f"{base}/dl/p.zip"}]
     if sums:
         assets.append({"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": f"{base}/dl/SHA256SUMS.txt"})
-    return {"tag_name": f"v{version}", "body": "修了一些问题", "html_url": f"{base}/release",
+    return {"tag_name": f"v{version}", "body": "修了一些問題", "html_url": f"{base}/release",
             "draft": False, "prerelease": False, "assets": assets}, name
 
 
@@ -68,17 +68,17 @@ def test_version_compare():
 def test_check_and_download(gh, tmp_path):
     state, base = gh
     api = f"{base}/latest"
-    assert update.check("1.0.0", api=api) is None  # 还没发布过
+    assert update.check("1.0.0", api=api) is None  # 還沒釋出過
     state["release"], name = _release(base)
     state["files"][name] = BODY
     info = update.check("1.0.0", api=api)
     assert info["version"] == "9.9.9" and info["file"] == name and info["size"] == len(BODY)
-    assert info["notes"] == "修了一些问题" and info["page"] == f"{base}/release"
-    assert update.check("9.9.9", api=api) is None  # 已经是最新
+    assert info["notes"] == "修了一些問題" and info["page"] == f"{base}/release"
+    assert update.check("9.9.9", api=api) is None  # 已經是最新
     seen = []
     path = update.download(info, lambda d, t: seen.append((d, t)), tmp_path / "dl")
     assert path.read_bytes() == BODY and seen[-1] == (len(BODY), len(BODY))
-    with pytest.raises(ValueError):  # 文件和公布的哈希对不上：不装
+    with pytest.raises(ValueError):  # 檔案和公佈的雜湊對不上：不裝
         update.download({**info, "sha256": "0" * 64}, folder=tmp_path / "dl")
     assert not (tmp_path / "dl" / name).exists()
 
@@ -107,16 +107,16 @@ def test_prerelease_is_ignored(gh):
 
 def test_unreachable(monkeypatch):
     def boom(*a, **k):
-        raise requests.ConnectionError("连不上 GitHub")
+        raise requests.ConnectionError("連不上 GitHub")
     monkeypatch.setattr(update.requests, "get", boom)
-    assert update.check("1.0.0", mirrors=[], probe_hosts=()) is None  # 自动检查：静默
+    assert update.check("1.0.0", mirrors=[], probe_hosts=()) is None  # 自動檢查：靜默
     with pytest.raises(requests.ConnectionError):
         update.check("1.0.0", strict=True, mirrors=[], probe_hosts=())
 
 
 @pytest.fixture
 def mirror():
-    """模拟 jsDelivr：返回最新 tag 里的 lolhex/__init__.py。"""
+    """模擬 jsDelivr：返回最新 tag 裡的 lolhex/__init__.py。"""
     state = {"version": "9.9.9", "ok": True}
 
     class H(BaseHTTPRequestHandler):
@@ -144,9 +144,9 @@ def test_github_unreachable_falls_back_to_mirror(mirror):
     state, url = mirror
     dead = "http://127.0.0.1:9/latest"
     info = update.check("1.0.0", api=dead, mirrors=["http://127.0.0.1:9/x", url], probe_hosts=())
-    assert info["version"] == "9.9.9" and info["url"] is None and info["mirror"] is True  # 只给下载页
+    assert info["version"] == "9.9.9" and info["url"] is None and info["mirror"] is True  # 只給下載頁
     state["version"] = "1.0.0"
-    assert update.check("1.0.0", api=dead, mirrors=[url], strict=True, probe_hosts=()) is None  # 镜像说已是最新
+    assert update.check("1.0.0", api=dead, mirrors=[url], strict=True, probe_hosts=()) is None  # 映象說已是最新
     state["ok"] = False
     assert update.check("1.0.0", api=dead, mirrors=[url], probe_hosts=()) is None
     with pytest.raises(requests.RequestException):
@@ -165,7 +165,7 @@ class _Resp:
 
 
 def test_probe_follows_tags_to_newest(monkeypatch):
-    """按 tag 试探：1.0.4 → 1.0.5 有 → 从 1.0.5 接着试 → 1.1.0 有 → 再往后都没有，结果 1.1.0。"""
+    """按 tag 試探：1.0.4 → 1.0.5 有 → 從 1.0.5 接著試 → 1.1.0 有 → 再往後都沒有，結果 1.1.0。"""
     published = {"1.0.5", "1.1.0"}
     asked = []
 
@@ -175,7 +175,7 @@ def test_probe_follows_tags_to_newest(monkeypatch):
         return _Resp(200, {"version": v}) if v in published else _Resp(404)
     monkeypatch.setattr(update.requests, "get", fake_get)
     assert update.probe_newer("1.0.4") == ("1.1.0", True)
-    assert all("fastly.jsdelivr.net" in u for u in asked)  # 第一个节点答复了就不再问别的节点
+    assert all("fastly.jsdelivr.net" in u for u in asked)  # 第一個節點答覆了就不再問別的節點
     info = update.check_mirror("1.0.4", mirrors=[])
     assert info["version"] == "1.1.0" and info["mirror"] is True
 
