@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -31,25 +30,14 @@ log = logging.getLogger(__name__)
 BAND = (0.12, 0.10, 0.88, 0.85)  # x0, y0, x1, y1
 DETECT_MAX_W = 1600               # 檢測前把區域縮到這個寬度以內（4K 下約縮一半）
 REC_HEIGHT = 48                   # 識別前把標題塊縮放到這個高度
-# 沒有本機校準時先用的預設標題位置：國服 4K（16:9）實機多次校準的結果，按視窗比例。
-# 遊戲介面按高度縮放、水平居中，其他寬高比按這個規律換算。猜錯了也沒關係：
-# 識別不到就照常整塊掃描，掃到三張後換成本機的校準結果。
-DEFAULT_BOXES = [(0.2309, 0.3869, 0.3923, 0.4335), (0.4231, 0.3869, 0.5845, 0.4335),
-                 (0.6152, 0.3869, 0.7767, 0.4335)]
-
-
 @dataclass
 class Calibration:
-    """三個標題框，存為相對視窗的比例座標 (x0, y0, x1, y1)。guess：預設位置，還沒在本機確認過。"""
+    """三個標題框，存為相對視窗的比例座標 (x0, y0, x1, y1)。
+
+    只由當次 OCR 實際找到的三個標題建立，不在不同 UI scale、解析度或程式啟動之間沿用。
+    """
     boxes: list[tuple[float, float, float, float]]
     size: tuple[int, int]
-    guess: bool = False
-
-    @classmethod
-    def default(cls, w: int, h: int) -> "Calibration":
-        k = (16 / 9) * h / max(1, w)  # 16:9 → 1；更寬的螢幕卡片往中間收
-        boxes = [(0.5 + (x0 - 0.5) * k, y0, 0.5 + (x1 - 0.5) * k, y1) for x0, y0, x1, y1 in DEFAULT_BOXES]
-        return cls(boxes, (w, h), guess=True)
 
     def pixel_boxes(self, w: int, h: int) -> list[tuple[int, int, int, int]]:
         return [(int(a * w), int(b * h), int(c * w), int(d * h)) for a, b, c, d in self.boxes]
@@ -96,17 +84,13 @@ def fp_changed(a: np.ndarray | None, b: np.ndarray) -> bool:
 class AugmentDetector:
     def __init__(self, matcher: NameMatcher, calib_path: Path | None = None, ocr: OCR | None = None):
         self.matcher = matcher
+        # 保留參數以兼容舊呼叫端；校準不再從磁碟載入。玩家會改 UI scale，
+        # 同解析度的舊比例框不能證明仍然有效。
         self.calib_path = calib_path
         self._ocr = ocr
         self.calibration: Calibration | None = None
         self._last_fp: np.ndarray | None = None
         self._last_result: Offer | None = None
-        if calib_path and calib_path.exists():
-            try:
-                d = json.loads(calib_path.read_text(encoding="utf-8"))
-                self.calibration = Calibration([tuple(b) for b in d["boxes"]], tuple(d["size"]))
-            except (OSError, ValueError, KeyError):
-                self.calibration = None
 
     @property
     def ocr(self) -> OCR:
@@ -122,24 +106,21 @@ class AugmentDetector:
         return self.calibration is not None and tuple(self.calibration.size) == (w, h)
 
     def confirmed_for(self, w: int, h: int) -> bool:
-        return self.calibrated_for(w, h) and not self.calibration.guess
+        return self.calibrated_for(w, h)
 
     def ensure_calibration(self, w: int, h: int) -> None:
-        """這個視窗大小還沒校準過：先用預設位置，第一次選海克斯就能走輕量檢查。"""
-        if not self.calibrated_for(w, h):
-            self.calibration = Calibration.default(w, h)
+        """視窗尺寸變了就丟掉舊校準；新尺寸必須由整屏 OCR 重新找到。"""
+        if self.calibration is not None and not self.calibrated_for(w, h):
+            self.calibration = None
             self._last_fp = None
+            self._last_result = None
 
     def reset_calibration(self) -> None:
         self.calibration = None
         self._last_fp = None
+        self._last_result = None
         if self.calib_path and self.calib_path.exists():
             self.calib_path.unlink()
-
-    def _save_calibration(self) -> None:
-        if self.calib_path and self.calibration:
-            self.calib_path.write_text(json.dumps({"boxes": self.calibration.boxes,
-                                                   "size": self.calibration.size}), encoding="utf-8")
 
     # ---------- 1. 全區域掃描 ----------
 
@@ -215,7 +196,6 @@ class AugmentDetector:
         half_h = 0.9 * th
         boxes = [((c - half_w) / W, (cy - half_h) / H, (c + half_w) / W, (cy + half_h) / H) for c in centers]
         self.calibration = Calibration(boxes, (W, H))
-        self._save_calibration()
         log.info("已校準三選一標題位置：%s @ %dx%d", boxes, W, H)
 
     # ---------- 2. 已校準的輕量檢查 ----------
@@ -249,9 +229,6 @@ class AugmentDetector:
             scores.append(sc)
             boxes.append((win.left + x0, win.top + y0, win.left + x1, win.top + y1))
         offer = Offer(slots, texts, scores, boxes)
-        if self.calibration.guess and offer.matched() == 3:
-            self.calibration.guess = False  # 預設位置在本機對上了，存下來
-            self._save_calibration()
         self._last_result = offer if offer.matched() >= 2 else None
         return self._last_result
 

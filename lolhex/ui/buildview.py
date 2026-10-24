@@ -31,14 +31,23 @@ def spell_pair(icons, row: dict, size: int) -> str:
 
 
 def skills_line(d: dict, show_win: bool) -> str | None:
-    """加點只寫主副：「主 Q · 副 E」（不列逐級加點）。"""
+    """加點寫成套牌順序「Q > E > W」，並給出場率和勝率（不列逐級加點）。
+
+    出場率 = 這套順序的場次 / 所有順序的場次，資料在 tencent 那邊沒算，這裡算。"""
     sk = d.get("skills") or []
     mx = [k for k in (sk[0].get("max") or []) if k in "QWE"] if sk else []
     if not mx:
         return None
-    s = "<b>加點</b>　主 " + mx[0] + (" · 副 " + mx[1] if len(mx) > 1 else "")
-    if show_win and sk[0].get("win") is not None:
-        s += f" <span style='color:{GRAY}'>{_pct(sk[0]['win'])}</span>"
+    top = sk[0]
+    s = "<b>加點</b>　" + " &gt; ".join(mx)
+    total = sum(x.get("games") or 0 for x in sk)
+    share = top.get("pick")
+    if share is None and top.get("games") and total:
+        share = top["games"] / total
+    if share:
+        s += f" <span style='color:{GRAY}'>出場 {_pct(share)}</span>"
+    if show_win and top.get("win") is not None:
+        s += f" <span style='color:{GRAY}'>勝率 {_pct(top['win'])}</span>"
     return s
 
 
@@ -61,6 +70,10 @@ def lines(d: dict, icons, show_win: bool, size: int = 24, compact: bool = False)
 
     def core(c):
         return " → ".join(item(icons, x, size) for x in c.get("items") or []) + wr(c.get("win"))
+    # 大亂鬥調整值（增減傷、技能急速等）放最前面：開局看裝備之前先知道這隻被調整了什麼
+    adj = d.get("adjust") or []
+    if adj:
+        out.append("<b>大亂鬥調整</b>　" + "　".join(adj))
     cores = b.get("core") or []
     if cores:
         out.append("<b>核心三件</b>")
@@ -71,4 +84,10 @@ def lines(d: dict, icons, show_win: bool, size: int = 24, compact: bool = False)
     if b.get("start"):
         s = b["start"][0]
         out.append("<b>出門裝</b>　" + " + ".join(item(icons, x, size) for x in s.get("items") or []) + wr(s.get("win")))
+    # 其他完整六件裝：資料一直在 builds["full"]，先前沒有畫出來
+    full = (b.get("full") or [])[:2 if compact else 4]
+    if full:
+        out.append("<b>其他完成裝</b>")
+        out.extend("　" + " → ".join(item(icons, x, size) for x in f.get("items") or []) + wr(f.get("win"))
+                   for f in full)
     return out

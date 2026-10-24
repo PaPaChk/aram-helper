@@ -12,7 +12,7 @@ def hero_completer(store, parent=None) -> tuple[QCompleter, dict[str, str]]:
     按包含關係匹配名字、稱號、中文別名和英文/拼音關鍵詞。"""
     rows, names = [], {}
     for hid, h in store.heroes.items():
-        base = f"{h['name']} {h['nick']}"
+        base = " ".join(x for x in (h.get("name"), h.get("nick")) if x)
         extra = [t for t in store.hero_terms(hid) if t.lower() not in base.lower()]
         cn = [t for t in extra if not t.isascii()]
         key = " ".join([base, *extra])

@@ -24,3 +24,14 @@
 - `lolhex/data/hero_nicknames.json`：網上常見的英雄外號，人工整理。
 - 執行時從騰訊官方公開介面（game.gtimg.cn、mlol.qt.qq.com）獲取官方出裝、加點與勝率所需靜態資料。國服名稱會保留為搜尋別名，顯示名稱由 tw-catalog.json 覆寫為台服譯名。
 - 統計勝率與官方靜態資料的版權歸原權利人所有；本專案不宣稱與 Riot Games 或騰訊有官方關係。
+
+## ARAM 英雄調整（CC BY-SA 3.0）
+
+`lolhex/data/bundled/aram_adjust.json`（ARAM 專屬的英雄增減益數值，例如「造成傷害 +5%」「承受傷害 -10%」「技能急速 +10」）並非本專案原創，來源如下：
+
+- 來源：[League of Legends Wiki](https://wiki.leagueoflegends.com/en-us/Module:ChampionData/data)，頁面 `Module:ChampionData/data` 中的 `["aram"]` 子表。
+- 擷取網址：<https://wiki.leagueoflegends.com/en-us/api.php?action=parse&page=Module%3AChampionData%2Fdata&prop=wikitext&format=json&formatversion=2>
+- 授權：[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)（姓名標示—相同方式分享）。
+- 產生方式：`.cache/build_aram.py`（僅重新排列與篩選欄位，未修改數值）。
+
+**授權範圍差異：** 這份 ARAM 調整資料及其衍生的 `aram_adjust.json` 採用 CC BY-SA 3.0，屬於「相同方式分享」——若轉載或改作這份資料，衍生作品必須以相同授權釋出。本專案其餘程式碼與其他資料不受此條款影響，仍依各自原本的授權釋出。CC BY-SA 3.0 與本專案其他部分的授權彼此獨立，互不擴散。

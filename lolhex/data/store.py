@@ -65,10 +65,30 @@ class DataStore:
         self._lock = threading.RLock()
         self.static: dict = _read(self.root / "static.json") or {}
         self.localizer = TWLocalizer()
+        # 首次啟動、尚未下載騰訊 static.json 時，先用內建台服 catalog 提供英雄名稱搜尋。
+        # 這不妨礙背景刷新；roles 等欄位稍後由正式資料補齊。
+        heroes = self.static.setdefault("heroes", {})
+        for hid, c in self.localizer.champions.items():
+            if hid not in heroes:
+                heroes[hid] = {
+                    "id": hid, "alias": c.get("alias"), "name": c.get("name_zh"),
+                    "name_cn": c.get("name_zh"), "name_en": c.get("name_en"),
+                    "icon": "", "source": "tw-catalog-bootstrap",
+                }
+        if not self.static.get("patch") and self.localizer.game_version:
+            self.static["patch"] = ".".join(self.localizer.game_version.split(".")[:2])
         self.localizer.apply_static(self.static)
         self.ranks: dict = {}
         self._heroes: dict[str, dict] = {}
         self.last_error: str | None = None
+        # 台服官網：騰訊的單英雄出裝常常整隻抓不到，有官網資料時優先顯示。
+        try:
+            from .arammayhem import AramMayhem
+
+            self.arammayhem = AramMayhem(self.root, refresh_hours=24.0)
+        except Exception as e:  # 官網模組出問題不該拖垮整個資料層
+            log.info("台服官網資料源停用：%s", e)
+            self.arammayhem = None
 
     # ---------- 重新整理 ----------
 

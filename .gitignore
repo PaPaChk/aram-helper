@@ -4,5 +4,6 @@ build/
 dist/
 .tools/
 .pytest_cache/
+.cache/
 *.spec.bak
 lolhex/data/bundled.new/

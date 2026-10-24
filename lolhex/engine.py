@@ -27,6 +27,12 @@ from .vision.matcher import NameMatcher
 
 log = logging.getLogger(__name__)
 
+# 台服版：選英雄介面會辨識（預選欄與我方英雄的評級／勝率標註，見 ChampSelectLayer），
+# 但「自動決定我玩哪隻」仍以手動選擇為準，避免標註誤判就改掉使用者選的英雄。
+# 想連英雄也自動認出，把 CHAMP_SELECT_DETECT 保留、MANUAL_HERO_ONLY 設 False 即可。
+MANUAL_HERO_ONLY = True
+CHAMP_SELECT_DETECT = True
+
 
 def pick_my_hero(found: list[tuple[str, float, int]]) -> tuple[str | None, list[str]]:
     """選英雄介面 OCR 到的英雄名 → (本人英雄, 候選)。
@@ -67,19 +73,20 @@ class Engine:
         if hasattr(self.store, "set_band"):
             self.store.set_band(settings.data_band or None)
         self.live = None
-        if settings.use_liveclient:
-            from .game.liveclient import LiveClient
-            self.live = LiveClient()
+        self._prefetching: set[str] = set()
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._rescan = threading.Event()
         self._detector = None  # 延遲建立，避免沒進遊戲就載入 OCR 模型
         self._icon_bank = None  # 英雄頭像庫，頭像下載好後建立
+        self._icons_lock = threading.RLock()
+        self._icons_loading = False
         from .data.icons import IconCache
         self.icons = IconCache(self.home / "data" / "img")  # 裝備、召喚師技能小圖示
         self._cs_memo = None    # 選人介面各位置的識別結果快取（champselect.Memo）
         self.vision_hold_until = 0.0  # time.monotonic() 在這之前暫停識別（自動截圖用）
         self._manual_hero = False
+        self._manual_at = 0.0
         self._panel_cache: tuple[str | None, dict | None] = (None, None)
         self.state: dict = {
             "phase": None,  # None / client / ingame
@@ -96,6 +103,10 @@ class Engine:
         for name, fn in (("data", self._data_loop), ("observer", self._observer_loop),
                          ("vision", self._vision_loop)):
             threading.Thread(target=fn, name=name, daemon=True).start()
+        if CHAMP_SELECT_DETECT:
+            # 頭像庫要先用才有東西可比對；下載 173 張小圖，只在缺檔時抓。
+            threading.Thread(target=self._load_icons, kwargs={"download": True},
+                             name="icons", daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -116,8 +127,10 @@ class Engine:
     # ---------- 玩家操作 ----------
 
     def set_hero(self, hero_key) -> None:
+        """手動指定英雄（備援）。不關掉自動辨識：畫面認出別的英雄時會自動接手。"""
         hid = self.store.resolve_hero(hero_key) if hero_key else None
         self._manual_hero = hid is not None
+        self._manual_at = time.monotonic()
         self._set(hero_id=hid, hero_source="manual" if hid else None, hero_candidates=[])
         if hid:
             threading.Thread(target=self._prefetch_hero, args=(hid,), daemon=True).start()
@@ -159,7 +172,8 @@ class Engine:
         hid = self.store.resolve_hero(hero_key)
         if self._panel_cache[0] == hid and self._panel_cache[1]:
             return self._panel_cache[1]
-        p = hero_panel(self.store, hid, self.settings.smoothing_games) if hid else None
+        # UI 執行緒只讀本地快取；官方出裝／加點由 _prefetch_hero 在背景補齊。
+        p = hero_panel(self.store, hid, self.settings.smoothing_games, allow_network=False) if hid else None
         self._panel_cache = (hid, p)
         return p
 
@@ -170,7 +184,6 @@ class Engine:
         while not self._stop.is_set():
             try:
                 self.store.refresh()
-                self._load_icons()
                 if self._detector:
                     self._detector.set_matcher(self._augment_matcher())
                 self._panel_cache = (None, None)
@@ -180,9 +193,8 @@ class Engine:
             self._stop.wait(max(600.0, self.settings.refresh_hours * 3600 / 4))
 
     def _warm_up(self) -> None:
-        """啟動時先用本地快取載入頭像庫、預熱 OCR，第一次進選人介面不用等網路和模型載入。"""
+        """預熱海克斯 OCR；英雄改為手動選取，不再下載頭像或載入選人模型。"""
         try:
-            self._load_icons(download=False)
             import numpy as np
             from .vision.ocr import OCR
             import cv2
@@ -196,6 +208,19 @@ class Engine:
     def _augment_matcher(self) -> NameMatcher:
         names = {aid: [a.get("name"), a.get("name_cn"), a.get("name_en"), a.get("en")]
                  for aid, a in self.store.mayhem_augments().items()}
+        # 騰訊靜態資料的台服名稱有時和遊戲畫面不一致（例如 3088 遊戲顯示「血色鈷石」，
+        # 騰訊寫「深紅鈷藍閃光」）。CommunityDragon 的 zh_tw catalog 是官方名稱，
+        # 一律併入成為額外的比對字串；只加名稱，不改國服勝率資料。
+        for aid, record in self.store.localizer.augments.items():
+            official = record.get("name_zh")
+            if not official:
+                continue
+            if aid not in names:
+                names[aid] = [official, record.get("name_en")]
+            else:
+                have = {str(v) for v in (names[aid] or []) if v}
+                if official not in have:
+                    names[aid] = list(names[aid]) + [official]
         return NameMatcher(names, self.settings.match_threshold)
 
     def _hero_matcher(self) -> NameMatcher:
@@ -217,19 +242,33 @@ class Engine:
         return NameMatcher(names, 86.0)
 
     def _load_icons(self, download: bool = True) -> None:
+        """建立英雄頭像庫。下載是慢的（173 張），下載期間不要用不完整的頭像庫去比對：
+        以前背景下載和每次掃描會同時呼叫這裡，掃描那邊看到資料夾已存在、又還沒有庫，
+        就用當下載好的十幾張建庫，之後 new==0 就再也不會重建，於是幾乎什麼都認不出。"""
         from .vision.champselect import Memo
         from .vision.portraits import IconBank, ensure_icons
-        folder = self.home / "data" / "icons"
-        heroes = self.store.heroes
-        if not heroes or (not download and not folder.is_dir()):
-            return
-        new = ensure_icons(folder, heroes) if download else 0
-        if new or self._icon_bank is None:
+        with self._icons_lock:
+            if self._icons_loading:
+                return
+            folder = self.home / "data" / "icons"
+            heroes = self.store.heroes
+            if not heroes or (not download and not folder.is_dir()):
+                return
+            self._icons_loading = True
+        try:
+            new = ensure_icons(folder, heroes) if download else 0
             bank = IconBank.from_dir(folder, heroes)
-            if len(bank):
-                self._icon_bank = bank
-                self._cs_memo = Memo()  # 頭像庫變了，快取的識別結果作廢
-                log.info("英雄頭像庫：%d 個", len(bank))
+            with self._icons_lock:
+                # 只有比現有的大才換：避免一次不完整的下載把好的庫換掉
+                if len(bank) and (self._icon_bank is None or len(bank) > len(self._icon_bank)):
+                    self._icon_bank = bank
+                    self._cs_memo = Memo()  # 頭像庫變了，快取的識別結果作廢
+                    log.info("英雄頭像庫：%d 個（新下載 %d）", len(bank), new)
+                elif self._icon_bank is None:
+                    log.warning("英雄頭像庫為空：%s 沒有可用的頭像", folder)
+        finally:
+            with self._icons_lock:
+                self._icons_loading = False
 
     def hero_brief(self, hid: str) -> dict:
         """選人介面標註用：國服勝率、按勝率的排名，以及由排名換算的評級。
@@ -248,9 +287,28 @@ class Engine:
                 "win": (ranks.get(hid) or {}).get("win"), "rank": rank, "total": total,
                 "grade": rank_grade(rank, total)}
 
+    def _prefetch_site(self, hid: str) -> None:
+        """順手把台服官網的這隻英雄抓下來，面板之後就能直接讀快取。"""
+        from .panel import _site_build
+
+        try:
+            _site_build(self.store, hid, allow_network=True)
+        except Exception:
+            log.info("台服官網預取失敗：%s", hid)
+
     def _prefetch_hero(self, hid: str) -> None:
-        self.store.hero(hid)
-        self._panel_cache = (None, None)
+        with self._lock:
+            if hid in self._prefetching:
+                return
+            self._prefetching.add(hid)
+        try:
+            self.store.hero(hid, allow_network=True)
+            self._prefetch_site(hid)
+        finally:
+            with self._lock:
+                self._prefetching.discard(hid)
+                if self.state.get("hero_id") == hid:
+                    self._panel_cache = (None, None)
 
     # ---------- 視窗狀態與英雄識別 ----------
 
@@ -276,22 +334,19 @@ class Engine:
             self._set(champ_select=None)
 
         if phase == "ingame":
-            if self.live and not self._manual_hero:
-                snap = self.live.snapshot()
-                if snap:
-                    self._set(level=snap.get("level"))
-                    if not self.state["hero_id"]:
-                        hid = self.store.resolve_hero(snap.get("champion_raw")) or \
-                            self.store.resolve_hero(snap.get("champion_name"))
-                        if hid:
-                            self._set_hero_auto(hid, "liveclient")
             return 2.0
-        if phase == "client" and win.is_foreground(client):
-            self._champ_select_scan(client)
-            # 畫面沒變的位置直接複用上次結果，所以可以掃得很勤
-            return (0.5 if self.state["champ_select"] else 1.0) * self.settings.speed_factor
         if phase == "client":
-            return 1.0  # 客戶端切到後臺：只查視窗不截圖，切回來 1 秒內恢復
+            # 選英雄介面是靜止畫面，Memo 會快取識別結果，所以可以掃得勤而不吃 CPU。
+            # 只在客戶端在前臺時掃：截圖取的是該視窗的螢幕區域，被別視窗蓋住就讀錯。
+            if CHAMP_SELECT_DETECT and client and win.is_foreground(client):
+                self._load_icons(download=False)
+                # 頭像庫還沒好（首次啟動下載中、或上次下載中斷）：補一次下載，
+                # 否則整個選人階段都會因為沒有可比對的頭像而什麼都認不出。
+                if self._icon_bank is None:
+                    threading.Thread(target=self._load_icons, kwargs={"download": True},
+                                     name="icons", daemon=True).start()
+                self._champ_select_scan(client)
+            return 1.0
         return 3.0
 
     def _set_hero_auto(self, hid: str, source: str) -> None:
@@ -320,9 +375,10 @@ class Engine:
         self._set(champ_select=cs or None)
         if cs is False:  # 不在選英雄介面
             return
-        if self._manual_hero:
-            return
-        if cs and cs.get("mine"):
+        # 自動認出自己選的英雄；手動輸入只是「這次」的優先，不是永久關掉自動辨識。
+        # 手動選了 A，畫面上認出的是 B：以手動為準，但只要手動的英雄和畫面認出的不同，
+        # 就讓自動辨識在下一輪重新接手（換場、重開、或使用者改了選擇都適用）。
+        if cs and cs.get("mine") and cs["mine"] != self.state.get("hero_id"):
             self._set_hero_auto(cs["mine"], "ocr")
             self._set(hero_candidates=[])
         elif not cs and self._icon_bank is None:

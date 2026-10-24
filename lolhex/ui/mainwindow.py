@@ -32,7 +32,7 @@ from .herosearch import hero_completer
 RARITY_CN = {"silver": "白銀", "gold": "黃金", "prismatic": "稜彩"}
 VERDICT_CN = {"best": ("首選", "#2e9d5b"), "ok": ("可選", "#3b7dd8"), "reroll": ("可考慮重新整理", "#d0533f"),
               "unknown": ("未知", "#888")}
-PHASE_CN = {None: "未檢測到英雄聯盟", "client": "客戶端（選英雄介面會自動識別英雄）", "ingame": "對局中"}
+PHASE_CN = {None: "未檢測到英雄聯盟", "client": "客戶端（請手動選擇英雄）", "ingame": "對局中"}
 VISION_CN = {"idle": "待機", "paused": "遊戲不在前臺，暫停", "scanning": "掃描中"}
 UPDATE_EVERY_MS = 30 * 60 * 1000  # 常駐時多久查一次更新
 
@@ -72,7 +72,12 @@ def show_progress(bar: QProgressBar, label: str, done: int | None = None, total:
 def _card() -> QFrame:
     f = QFrame()
     f.setObjectName("card")
-    f.setStyleSheet("QFrame#card{border:1px solid #d7dbe3;border-radius:6px;background:#fbfcfe}")
+    # 卡片固定用淺色底；Windows 深色模式會把預設文字設成白色，必須一併指定深色文字，
+    # 否則狀態與英雄內容會變成白底白字。
+    f.setStyleSheet("QFrame#card{border:1px solid #d7dbe3;border-radius:6px;"
+                    "background:#fbfcfe;color:#20242c}"
+                    "QFrame#card QLabel{color:#20242c;background:transparent}"
+                    "QFrame#card QProgressBar{color:#20242c}")
     return f
 
 
@@ -200,7 +205,6 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(app_icon())
         self.resize(700, 820)
         self.setMinimumSize(640, 700)
-
         root = QWidget()
         lay = QVBoxLayout(root)
         lay.setContentsMargins(14, 12, 14, 12)
@@ -226,7 +230,9 @@ class MainWindow(QMainWindow):
 
         # 有新版本時才顯示
         self.update_bar = _card()
-        self.update_bar.setStyleSheet("QFrame#card{border:1px solid #e0b64a;border-radius:6px;background:#fff8e1}")
+        self.update_bar.setStyleSheet("QFrame#card{border:1px solid #e0b64a;border-radius:6px;"
+                                      "background:#fff8e1;color:#20242c}"
+                                      "QFrame#card QLabel{color:#20242c;background:transparent}")
         ubv = QVBoxLayout(self.update_bar)
         ub = QHBoxLayout()
         ubv.addLayout(ub)
@@ -275,7 +281,7 @@ class MainWindow(QMainWindow):
         self.search.setPlaceholderText("搜尋英雄")
         self.search.returnPressed.connect(self._search_pick)
         btn_clear = QPushButton("清除")
-        btn_clear.clicked.connect(lambda: self.engine.set_hero(None))
+        btn_clear.clicked.connect(lambda: self._pick_hero(None))
         row.addWidget(self.search, 1)
         row.addWidget(btn_clear)
         hl.addLayout(row)
@@ -344,6 +350,13 @@ class MainWindow(QMainWindow):
         self.timer.start(1000)
         self.refresh()
 
+    def showEvent(self, e):
+        # 主視窗永遠排除在截圖之外：選英雄辨識是讀螢幕的，主視窗若蓋在客戶端上面
+        # （實測 656x743 正好壓住預選欄與「可使用的英雄」），辨識就會讀到自己的介面而全部失敗。
+        # always=True：不受「錄屏時顯示浮窗」設定影響，那設定是給浮層用的。
+        win.exclude_from_capture(int(self.winId()), always=True)
+        super().showEvent(e)
+
     # ---------- 設定 ----------
 
     def _settings_tab(self) -> QWidget:
@@ -356,8 +369,6 @@ class MainWindow(QMainWindow):
         outer.addLayout(f)
         self.set_win = QCheckBox("顯示勝率數字")
         self.set_win.setChecked(s.show_winrate)
-        self.set_live = QCheckBox("對局中用遊戲介面識別英雄（更準確）")
-        self.set_live.setChecked(s.use_liveclient)
         self.set_corner = QComboBox()
         self.set_corner.addItems(["右上角", "左上角"])
         self.set_corner.setCurrentIndex(0 if s.overlay_corner == "top-right" else 1)
@@ -380,15 +391,17 @@ class MainWindow(QMainWindow):
         self.set_auto.setChecked(autostart.is_enabled())
         self.set_data = QCheckBox("自動更新統計資料")
         self.set_data.setChecked(s.check_data_updates)
+        self.set_autoupdate = QCheckBox("自動更新程式（從 GitHub 下載並安裝）")
+        self.set_autoupdate.setChecked(getattr(s, "auto_update", True))
         f.addRow("識別頻率", self.set_speed)
         f.addRow("", self.set_win)
         f.addRow("", self.set_overlay)
         f.addRow("浮窗位置", self.set_corner)
         f.addRow("", self.set_capture)
         f.addRow("", shot_row)
-        f.addRow("", self.set_live)
         f.addRow("", self.set_auto)
         f.addRow("", self.set_data)
+        f.addRow("", self.set_autoupdate)
         save = QPushButton("儲存設定")
         save.clicked.connect(self._save_settings)
         f.addRow("", save)
@@ -522,8 +535,11 @@ class MainWindow(QMainWindow):
             box.exec()
             if b_open is not None and box.clickedButton() is b_open:
                 webbrowser.open(notice["url"])
+        # 台服版停用上游程式更新；雲控的 min_version 是上游國服版本號，
+        # 直接比較會把 1.0.0+tw.4 誤判成比 1.1.0 舊，並引導使用者下載錯誤版本。
         minv = cfg.get("min_version") or ""
-        if minv and update.is_newer(minv, __version__) and not getattr(self, "_min_warned", False):
+        if (APP_UPDATES_ENABLED and minv and update.is_newer(minv, __version__)
+                and not getattr(self, "_min_warned", False)):
             self._min_warned = True
             box = QMessageBox(QMessageBox.Warning, "需要更新", f"當前版本 {__version__} 太舊，請更新到最新版本。", parent=self)
             b_up = box.addButton("立即更新", QMessageBox.AcceptRole)
@@ -538,12 +554,12 @@ class MainWindow(QMainWindow):
     def _save_settings(self):
         s = self.engine.settings
         s.check_data_updates = self.set_data.isChecked()
+        s.auto_update = self.set_autoupdate.isChecked()
         s.speed = self.set_speed.currentData() or "standard"
         s.allow_capture = self.set_capture.isChecked()
         s.auto_screenshot = self.set_autoshot.isChecked()
         win.set_capture_allowed(s.allow_capture)
         s.show_winrate = self.set_win.isChecked()
-        s.use_liveclient = self.set_live.isChecked()
         s.overlay = self.set_overlay.isChecked()
         s.overlay_corner = "top-right" if self.set_corner.currentIndex() == 0 else "top-left"
         s.save()
@@ -622,6 +638,13 @@ class MainWindow(QMainWindow):
         self.btn_update.setText("立即更新" if direct else "去下載")
         self.update_bar.show()
         tray = getattr(self, "tray", None)
+        auto = bool(getattr(self.engine.settings, "auto_update", True))
+        can_auto = getattr(self, "_can_auto_update", None)
+        if auto and not manual and direct and can_auto and can_auto():
+            # 自動更新：不問使用者，直接下載並安裝，裝完自動重開
+            logging.getLogger(__name__).info("自動更新到 %s", info.get("version"))
+            self._start_update()
+            return
         if manual:
             ask = QMessageBox.question(self, "檢查更新", f"有新版本 {info['version']}（當前 {__version__}）。"
                                        + (f"\n\n{info['notes']}" if info.get("notes") else "")
@@ -634,6 +657,19 @@ class MainWindow(QMainWindow):
         elif tray and known != info["version"]:  # 同一個版本只彈一次通知
             tray.showMessage("海克斯大亂鬥助手", f"有新版本 {info['version']}，開啟主介面點「立即更新」。",
                              app_icon(), 6000)
+
+    def _can_auto_update(self) -> bool:
+        """自動更新要不要現在就裝：對局中不要（會打斷遊戲），托盤模式下也不要主動跳視窗。"""
+        try:
+            if self.engine.snapshot().get("phase") == "ingame":
+                logging.getLogger(__name__).info("對局中，略過自動更新")
+                return False
+            if self.isHidden() or not self.isVisible():
+                logging.getLogger(__name__).info("主視窗未顯示，略過自動更新")
+                return False
+        except Exception:
+            return False
+        return True
 
     def _start_update(self):
         if not self._update_info or (self._worker and self._worker.isRunning()):
@@ -709,14 +745,19 @@ class MainWindow(QMainWindow):
         if self._names or not heroes:
             return
         comp, self._names = hero_completer(self.engine.store, self)
-        comp.activated.connect(lambda text: (self.engine.set_hero(self._names.get(text, text)), self.search.clear()))
+        comp.activated.connect(lambda text: self._pick_hero(self._names.get(text, text)))
         self.search.setCompleter(comp)
+
+    def _pick_hero(self, hero_key):
+        """手動選英雄：立即重畫本地資料，官方資料在背景補齊。"""
+        self.engine.set_hero(hero_key)
+        self.search.clear()
+        self.refresh()
 
     def _search_pick(self):
         t = self.search.text().strip()
         if t:
-            self.engine.set_hero(self._names.get(t, t))
-            self.search.clear()
+            self._pick_hero(self._names.get(t, t))
 
     def _set_candidates(self, cands):
         ids = [c.get("id") for c in cands]
@@ -731,7 +772,7 @@ class MainWindow(QMainWindow):
             self.cands.addWidget(QLabel("候選："))
         for c in cands[:6]:
             b = QPushButton(c.get("name") or c.get("id"))
-            b.clicked.connect(lambda _=False, hid=c.get("id"): self.engine.set_hero(hid))
+            b.clicked.connect(lambda _=False, hid=c.get("id"): self._pick_hero(hid))
             self.cands.addWidget(b)
         self.cands.addStretch(1)
 
@@ -773,10 +814,10 @@ class MainWindow(QMainWindow):
             if r.get("pick") is not None:
                 rating.append(f"出場率 {_pct(r['pick'])}")
             self.hero_label.setText(
-                f"<span style='font-size:18px'><b>{h['name']}</b></span> {h['nick']}<br>"
+                f"<span style='font-size:18px'><b>{h.get('name') or hid}</b></span> {h.get('nick') or ''}<br>"
                 f"{' · '.join(rating)}")
         else:
-            self.hero_label.setText("<b>未識別到英雄</b>")
+            self.hero_label.setText("<b>請手動選擇英雄</b><br><span style='color:#777'>輸入中文名、英文名、稱號或玩家別名</span>")
         cs = snap.get("champ_select")
         if cs and (cs.get("bench") or cs.get("cards")):
             from .overlay import champ_select_summary

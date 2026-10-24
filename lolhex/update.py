@@ -29,7 +29,7 @@ from . import GITHUB_REPO, MIRROR, RELEASES_PAGE, WEBSITE
 
 log = logging.getLogger(__name__)
 API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-FILE_RE = re.compile(r"^AramHex-Setup-[0-9][0-9A-Za-z.\-]*\.exe$")
+FILE_RE = re.compile(r"^AramHex(?:TW)?-Setup-[0-9][0-9A-Za-z.+\-]*\.exe$")
 SUMS = "SHA256SUMS.txt"
 HEADERS = {"Accept": "application/vnd.github+json", "User-Agent": "aramhex"}
 VERSION_MIRRORS = [f"https://{host}/gh/{GITHUB_REPO}@latest/lolhex/__init__.py"
@@ -168,9 +168,12 @@ def _sha_from_sums(assets: list[dict], name: str, timeout: float) -> str | None:
 
 
 def check(current: str, timeout: float = 8, strict: bool = False, api: str = API,
-          mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS, site: str | None = SITE_LATEST) -> dict | None:
-    """有新版本返回它的資訊，沒有或查不到返回 None。先問官網映象，不通再問 GitHub 和 jsDelivr。
-    strict=True（使用者手動點"檢查更新"）時查不到就拋異常，好告訴使用者是沒新版本還是沒連上。"""
+          mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS, site: str | None = None) -> dict | None:
+    """有新版本返回它的資訊，沒有或查不到返回 None。
+
+    台服版只認自己倉庫的 GitHub Releases：aramhex.com 的 latest.json 公布的是
+    國服（czgreat/aramhex）的版本，照著它更新會把台服版覆蓋成國服版，
+    所以 site 預設為 None，不要傳入官網映象。"""
     if site:
         try:
             return check_site(current, min(timeout, 6), site)
@@ -249,3 +252,34 @@ def launch_installer(path: Path) -> None:
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen([str(path), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True,
                      creationflags=flags, cwd=os.path.dirname(str(path)))
+
+
+def auto_update(current: str, shutdown=None, timeout: float = 8) -> dict | None:
+    """自動更新：查 GitHub Releases，有新版就下載、校驗、靜默安裝，然後結束本程式。
+
+    shutdown 是「關閉助手」的 callback（存設定、關視窗、退出程序），
+    傳 None 表示只下載不安裝（測試用）。回傳這次做了什麼：
+      None                      沒有新版本
+      {"action": "downloaded"}  下載好但沒安裝（沒給 shutdown）
+      {"action": "installing"}  已啟動安裝程式，呼叫端應馬上結束
+    任何失敗都回 None，交給呼叫端決定要不要提示使用者。
+    """
+    try:
+        info = check(current, timeout=timeout)
+    except Exception as e:  # 網路或格式問題：自動更新失敗不該影響使用
+        log.info("自動更新檢查失敗：%s", e)
+        return None
+    if not info:
+        return None
+    try:
+        path = download(info)
+    except Exception as e:
+        log.info("自動更新下載失敗：%s", e)
+        return None
+    if shutdown is None:
+        return {"action": "downloaded", "version": info.get("version"), "path": str(path)}
+    try:
+        shutdown()
+    finally:
+        launch_installer(path)
+    return {"action": "installing", "version": info.get("version")}

@@ -108,10 +108,32 @@ def test_is_champ_select_marker():
             seen.append(crop.shape)
             return text, score
         return f
-    assert champselect.is_champ_select(frame, rec("可用"))
-    assert seen[0][:2] == (36, 80)  # 讀的是"可用"那一小塊
+    # 標題實際文字是「可使用的英雄」；MARKER_TEXT 是可接受的幾個字串（tuple）
+    assert isinstance(champselect.MARKER_TEXT, tuple)
+    assert champselect.is_champ_select(frame, rec("可使用的英雄"))
+    # 讀的是"可使用的英雄"那一小塊，不是整張畫面
+    h, w = frame.shape[:2]
+    x0, y0, x1, y1 = champselect.MARKER_BOX
+    assert seen[0][:2] == (int((y1 - y0) * h), int((x1 - x0) * w))
     assert not champselect.is_champ_select(frame, rec("開始匹配"))
-    assert not champselect.is_champ_select(frame, rec("可用", 0.3))
+    assert not champselect.is_champ_select(frame, rec("可使用的英雄", 0.3))
+
+
+def test_marker_accepts_real_champion_select_label():
+    """回歸：標題寫的是「可使用的英雄」，可－使－用 三個字並不連續，
+    以前只比對「可用」時 `"可用" in text` 永遠不成立，整個選英雄介面因此判定失敗。
+    大廳導覽列的《英雄聯盟》不可以被當成選英雄介面。"""
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+
+    def ok(text, score):
+        return champselect.is_champ_select(frame, lambda crop: (text, score))
+
+    assert ok("可使用的英雄", 0.99995)  # 實機 OCR 量到的結果
+    assert ok("可使用", 0.9)            # 簡寫兜底
+    assert ok("可 使用 的英雄", 0.9)     # OCR 在字之間插空格：先去掉空格再比對
+    assert not ok("可使用的英雄", 0.59)  # 置信度不足 0.6
+    assert not ok("《英雄聯盟》", 0.99)  # 大廳導覽列
+    assert not ok("開始匹配", 0.99)
 
 
 def test_read_cards_two_or_three():

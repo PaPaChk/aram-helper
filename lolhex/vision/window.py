@@ -90,16 +90,29 @@ def is_foreground(hwnd: int) -> bool:
     return fg == hwnd or (fg in _companions and not ctypes.windll.user32.IsIconic(hwnd))
 
 
-_overlay_windows: set[int] = set()
+_overlay_windows: set[int] = set()          # 浮層：受 allow_capture 控制
+_hidden_windows: set[int] = set()           # 永遠排除（主視窗：絕不能蓋到識別區域）
 _capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 除錯截圖時讓懸浮層可見
 
 
-def exclude_from_capture(hwnd: int) -> None:
-    """讓自己的懸浮窗不出現在截圖和錄屏裡（Win10 2004+）：一是避免識別到自己畫的字，
-    二是錄影片、直播時畫面乾淨。設定裡開啟"錄屏、截圖時顯示浮窗"就不排除。"""
-    if hwnd:
-        _overlay_windows.add(int(hwnd))
-        _apply_affinity(int(hwnd))
+def exclude_from_capture(hwnd: int, always: bool = False) -> None:
+    """讓自己的窗不出現在截圖和錄屏裡（Win10 2004+）：一是避免識別到自己畫的字，
+    二是錄影片、直播時畫面乾淨。設定裡開啟"錄屏、截圖時顯示浮窗"就不排除。
+
+    always=True 的窗（主視窗）不受那個設定影響：主視窗不是浮層，而且它會蓋住客戶端的
+    選人區域，一旦可被截取就會讓辨識讀到自己的介面而全面失敗。
+    """
+    if not hwnd:
+        return
+    if always:
+        _hidden_windows.add(int(hwnd))
+        try:
+            ctypes.windll.user32.SetWindowDisplayAffinity(int(hwnd), 0x11)
+        except Exception:
+            pass
+        return
+    _overlay_windows.add(int(hwnd))
+    _apply_affinity(int(hwnd))
 
 
 def _apply_affinity(hwnd: int) -> None:

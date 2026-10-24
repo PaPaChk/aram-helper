@@ -71,6 +71,13 @@ def _win():
     return win, shown
 
 
+@pytest.fixture(autouse=True)
+def _no_qt_icon(monkeypatch):
+    """這些測試不建立 QApplication，app_icon() 會造 QPixmap 而直接崩潰（Qt 硬中止）。
+    托盤通知的圖示不是這裡要驗的東西，換成 None 就好。"""
+    monkeypatch.setattr(mainwindow, "app_icon", lambda: None)
+
+
 @pytest.fixture
 def boxes(monkeypatch):
     said = []
@@ -127,3 +134,81 @@ def test_mirror_result_offers_download_page():
     assert win.btn_update.text == "去下載"
     win._update_found({"version": "9.9.10", "file": "AramHex-Setup-9.9.10.exe", "sha256": "0" * 64, "url": "u"})
     assert win.btn_update.text in ("立即更新", "去下載")  # 便攜版跑測試時也是「去下載」
+
+
+def test_auto_update_starts_download_without_asking(monkeypatch):
+    """開啟自動更新時，自動檢查（非手動）查到新版本就直接下載，不彈詢問視窗。"""
+    win, shown = _win()
+    win.engine.settings = SimpleNamespace(auto_update=True)
+    win._can_auto_update = lambda: True
+    monkeypatch.setattr(mainwindow.patch, "install_root", lambda: "C:/fake/install")
+    win._update_found({"version": "9.9.9", "file": "AramHex-Setup-9.9.9.exe",
+                       "sha256": "0" * 64, "url": "https://x/a.exe"})
+    assert shown == ["開始下載"]
+
+
+def test_auto_update_respects_switch(monkeypatch):
+    """關掉自動更新時只提示，不自己下載。"""
+    win, shown = _win()
+    win.tray = None                      # 走完橫條更新就好，不進托盤通知
+    win.engine.settings = SimpleNamespace(auto_update=False)
+    win._can_auto_update = lambda: True
+    monkeypatch.setattr(mainwindow.patch, "install_root", lambda: "C:/fake/install")
+    win._update_found({"version": "9.9.9", "file": "AramHex-Setup-9.9.9.exe",
+                       "sha256": "0" * 64, "url": "https://x/a.exe"})
+    assert shown == []
+    assert win.btn_update.text == "立即更新"   # 仍會提示有新版本
+
+
+def test_auto_update_skips_while_ingame(monkeypatch):
+    """對局中不要自動安裝，免得打斷遊戲。"""
+    win, shown = _win()
+    win.tray = None
+    win.engine.settings = SimpleNamespace(auto_update=True)
+    win.engine.snapshot = lambda: {"phase": "ingame"}
+    win.isHidden = lambda: False
+    win.isVisible = lambda: True
+    win._can_auto_update = lambda: MainWindow._can_auto_update(win)
+    monkeypatch.setattr(mainwindow.patch, "install_root", lambda: "C:/fake/install")
+    win._update_found({"version": "9.9.9", "file": "AramHex-Setup-9.9.9.exe",
+                       "sha256": "0" * 64, "url": "https://x/a.exe"})
+    assert shown == []
+
+
+def test_tw_build_ignores_upstream_min_version(monkeypatch):
+    """台服版停用上游更新，不能把國服 1.1.0 拿來和 1.0.0+tw.4 比較。"""
+    win, _ = _win()
+    monkeypatch.setattr(mainwindow, "APP_UPDATES_ENABLED", False)
+
+    class NoDialog:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("停用上游更新時不應顯示最低版本視窗")
+
+    monkeypatch.setattr(mainwindow, "QMessageBox", NoDialog)
+    MainWindow._apply_cloud(win, {"notice": {}, "min_version": "1.1.0"})
+    assert not getattr(win, "_min_warned", False)
+
+
+def test_upstream_min_version_still_warns_when_enabled(monkeypatch):
+    win, _ = _win()
+    monkeypatch.setattr(mainwindow, "APP_UPDATES_ENABLED", True)
+    shown = []
+
+    class FakeMessageBox:
+        Warning, AcceptRole, RejectRole = 1, 2, 3
+
+        def __init__(self, *args, **kwargs):
+            shown.append(args)
+
+        def addButton(self, *args):
+            return None
+
+        def exec(self):
+            return 0
+
+        def clickedButton(self):
+            return object()
+
+    monkeypatch.setattr(mainwindow, "QMessageBox", FakeMessageBox)
+    MainWindow._apply_cloud(win, {"notice": {}, "min_version": "1.1.0"})
+    assert len(shown) == 1 and win._min_warned

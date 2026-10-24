@@ -72,7 +72,7 @@ Copy-Item -Recurse (Join-Path $dist '*') $stage
 Set-Content -LiteralPath (Join-Path $stage 'portable.txt') -Encoding utf8 -Value @'
 這是便攜版：配置、日誌和下載的資料都放在本目錄的 userdata 資料夾裡，不寫系統目錄。
 刪除整個資料夾即可解除安裝。有新版本時助手會提示，請到 GitHub 下載新的便攜版替換。
-https://github.com/czgreat/aramhex/releases
+https://github.com/PaPaChk/aram-helper/releases
 '@
 Copy-Item (Join-Path $root 'LICENSE') $stage
 $zip = "AramHexTW-Portable-$version.zip"

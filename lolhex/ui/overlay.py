@@ -11,12 +11,13 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QVBoxLayout, QWidget)
+                               QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 
 from ..vision import window as win
 from .. import patch
@@ -34,6 +35,57 @@ VERDICT = {"best": ("首選", QColor(95, 211, 141)), "ok": ("可選", QColor(98,
 
 
 AUTO_HIDE_SECONDS = 5
+
+# 浮窗詳情的分區（依顯示順序）：(代號, 標題, 預設是否展開)。每個分區可獨立折疊，
+# 折疊狀態存在 ControlPanel.folds 裡，update_from 每 250ms 重畫也不會被重設。
+SECTIONS = (
+    ("adjust", "大亂鬥調整", True),
+    ("augments", "推薦海克斯", True),
+    ("combos", "海克斯組合", True),
+    ("skills", "加點順序", True),
+    ("start", "出門裝", True),
+    ("shoes", "鞋子", True),
+    ("core", "核心三件", True),
+    ("full", "其他完成裝", True),
+)
+
+# buildview.lines() 每一行都以 <b>標題</b> 開頭；用開頭的標題把清單分到各分區。
+# 沒有對應分區的行（召喚師技能、資料來源）歸入「其他」。
+_LINE_MARKERS = {"大亂鬥調整": "adjust", "核心三件": "core", "鞋子": "shoes",
+                 "出門裝": "start", "其他完成裝": "full"}
+
+# 分區沒有資料時顯示這句，而不是留一片空白讓人以為壞掉
+_NO_DATA = "<span style='color:#8b93a7'>暫無資料</span>"
+_NO_COMBOS = "<span style='color:#8b93a7'>暫無組合資料</span>"
+
+
+def _strip_marker(html: str) -> str:
+    """去掉行首的 <b>標題</b> 和緊跟的全角空白：標題已經顯示在分區的標題按鈕上。"""
+    if not html.startswith("<b>"):
+        return html
+    end = html.find("</b>")
+    if end < 0:
+        return html
+    return html[end + 4:].lstrip("　 ")
+
+
+def _split_build_lines(lines) -> dict:
+    """把 buildview.lines() 的 HTML 片段清單按開頭標題分組：{分區代號: [片段, ...]}。
+
+    buildview 先輸出一行粗體標題，再把細項緊接在後面（細項本身沒有標題），
+    所以沒有標題的行沿用上一個標題所屬的分區。"""
+    out: dict[str, list[str]] = {}
+    current = "misc"
+    for ln in lines or []:
+        if "<b>" in ln:
+            head = ln.split("<b>", 1)[1].split("</b>", 1)[0].strip()
+            current = _LINE_MARKERS.get(head, "misc")
+            # 標題行去掉重複的粗體標題，其餘行原樣保留
+            if current != "misc":
+                ln = _strip_marker(ln)
+        if ln:
+            out.setdefault(current, []).append(ln)
+    return out
 
 
 def _dpr() -> float:
@@ -312,7 +364,10 @@ class ControlPanel(QWidget):
                   "QLabel{color:#e6e8ee;font:12px 'Microsoft YaHei UI'}"
                   "QLineEdit{background:#0c0e12;color:#e6e8ee;border:1px solid #2c3240;border-radius:4px;padding:3px 6px}"
                   "QPushButton{background:#1b2130;color:#e6e8ee;border:1px solid #2c3240;border-radius:4px;padding:2px 8px}"
-                  "QPushButton:hover{border-color:#62a8ff}")
+                  "QPushButton:hover{border-color:#62a8ff}"
+                  "QToolButton{background:transparent;color:#e7c35a;border:none;text-align:left;"
+                  "font:12px 'Microsoft YaHei UI';padding:1px 0}"
+                  "QToolButton:hover{color:#62a8ff}")
 
     def __init__(self, engine, corner: str = "top-right"):
         super().__init__()
@@ -356,6 +411,10 @@ class ControlPanel(QWidget):
         self.hero_label = QLabel()
         self.hero_label.setTextFormat(Qt.RichText)
         self.hero_label.setWordWrap(True)
+        # 會換行的 QLabel 高度隨寬度變動，但外層垂直佈局預設不採計 heightForWidth，
+        # 於是標題只分到一行的高度、第二行壓到下面的搜尋框。明確要求它回報最小高度。
+        self.hero_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        self.hero_label.setMinimumHeight(1)
         self.cands = QHBoxLayout()
         self.cands.setSpacing(4)
         self.search = QLineEdit()
@@ -363,14 +422,45 @@ class ControlPanel(QWidget):
         self._completer_ready = False
         self.search.returnPressed.connect(self._search_pick)
         self.search.installEventFilter(self)
+        bl.addWidget(self.hero_label)
+        bl.addLayout(self.cands)
+        bl.addWidget(self.search)
+        # 七個可折疊分區：標題按鈕 + 摺頁內容。折疊狀態存在 self.folds，update_from 不會重設。
+        self.folds = {key: expanded for key, _title, expanded in SECTIONS}
+        self.sections: dict[str, dict] = {}
+        for key, title, expanded in SECTIONS:
+            head = QToolButton()
+            head.setProperty("title", title)
+            head.setCheckable(True)
+            head.setChecked(expanded)
+            head.setAutoRaise(True)
+            head.setCursor(Qt.PointingHandCursor)
+            head.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            head.toggled.connect(lambda on, k=key: self._fold(k, on))
+            body = QLabel()
+            body.setTextFormat(Qt.RichText)
+            body.setWordWrap(True)
+            body.setOpenExternalLinks(False)
+            body.setContentsMargins(8, 0, 0, 0)
+            body.linkActivated.connect(self._link)
+            # QToolButton 不理 QSS 的 text-align，文字會置中。用外層橫列把按鈕靠左收緊，
+            # 標題才會貼齊左邊界（跟內容一致）。
+            head.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(0)
+            row.addWidget(head, 0, Qt.AlignLeft)
+            row.addStretch(1)
+            bl.addLayout(row)
+            bl.addWidget(body)
+            self.sections[key] = {"head": head, "body": body}
+            self._fold(key, expanded)
+        # 分區以外的即時資訊（選英雄彙總、提醒、資料狀態、連結、沒有對應分區的出裝行）
         self.info = QLabel()
         self.info.setTextFormat(Qt.RichText)
         self.info.setWordWrap(True)
         self.info.setOpenExternalLinks(False)
         self.info.linkActivated.connect(self._link)
-        bl.addWidget(self.hero_label)
-        bl.addLayout(self.cands)
-        bl.addWidget(self.search)
         bl.addWidget(self.info)
         self.body.hide()
         lay.addWidget(self.btn, 0, Qt.AlignRight)
@@ -387,6 +477,38 @@ class ControlPanel(QWidget):
         self.body.setVisible(self.expanded)
         self._away_since, self._hovered, self._auto_opened = None, False, False
         self.adjustSize()
+
+    def _fold(self, key: str, on: bool) -> None:
+        """折疊/展開一個分區。狀態記在 self.folds，跨 update_from 保留。"""
+        self.folds[key] = bool(on)
+        sec = self.sections.get(key)
+        if not sec:
+            return
+        sec["body"].setVisible(bool(on))
+        sec["head"].setChecked(bool(on))
+        sec["head"].setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        sec["head"].setText(("▾ " if on else "▸ ") + sec["head"].property("title"))
+        self.adjustSize()
+
+    @staticmethod
+    def _body_html(parts) -> str:
+        return "<br>".join(p for p in (parts or []) if p)
+
+    def _set_section(self, key: str, parts, placeholder: str = "") -> None:
+        """更新分區內容。parts 為空時用 placeholder 說明「沒有資料」，不留空白一片。"""
+        sec = self.sections[key]
+        placeholder = placeholder or _NO_DATA
+        html = self._body_html(parts) or placeholder
+        body = sec["body"]
+        if body.text() != html:
+            body.setText(html)
+            # 會換行的 QLabel 高度隨寬度變動，外層垂直佈局預設不採計 heightForWidth，
+            # 摺頁只會分到一行的高度，之後的內容被裁掉（看起來像「分區是空的，只剩標題」）。
+            # 這裡自己把需要的高度算給佈局。
+            need = body.heightForWidth(max(1, body.width() or 340))
+            if need > 0:
+                body.setMinimumHeight(need)
+        body.setVisible(bool(html) and self.folds[key])
 
     def _click_toggle(self):
         self.toggle()
@@ -504,12 +626,27 @@ class ControlPanel(QWidget):
                 rating.append(f"勝率 {_pct(r['win'])}")
             if r.get("pick") is not None:
                 rating.append(f"出場 {_pct(r['pick'])}")
-            hero_html = f"<b style='color:#e7c35a;font-size:14px'>{h['name']}</b> {h['nick']}<br>{' · '.join(rating)}"
+            hero_html = (f"<b style='color:#e7c35a;font-size:14px'>{h.get('name') or hid}</b> "
+                         f"{h.get('nick') or ''}<br>{' · '.join(rating)}")
         else:
             hero_html = "<span style='color:#8b93a7'>未識別英雄</span>"
         if self.hero_label.text() != hero_html:
             self.hero_label.setText(hero_html)
+            # 換行後的實際高度要自己算給佈局，否則第二行會壓到下一個控件。
+            need = self.hero_label.heightForWidth(max(1, self.hero_label.width() or 340))
+            if need > 0:
+                self.hero_label.setMinimumHeight(need)
         self._set_candidates(snap.get("candidates") or [])
+
+        # 先依 buildview 的輸出把出裝分到各分區
+        groups: dict[str, list[str]] = {}
+        skills = None
+        augments = []
+        if d:
+            groups = _split_build_lines(buildview.lines(d, self.engine.icons, show_win, size=22, compact=True))
+            skills = buildview.skills_line(d, show_win)
+            augments = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
+            augments.sort(key=lambda a: -a["delta"])
 
         parts = []
         cs = snap.get("champ_select")
@@ -518,15 +655,8 @@ class ControlPanel(QWidget):
         ev = snap.get("evaluation")
         if ev:
             parts.append(f"<b>{ev['advice']}</b>")
-        if d:
-            parts.extend(buildview.lines(d, self.engine.icons, show_win, size=22, compact=True))
-            sk = buildview.skills_line(d, show_win)
-            if sk:
-                parts.append(sk)
-            top = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
-            top.sort(key=lambda a: -a["delta"])
-            if top:
-                parts.append("推薦海克斯：" + "、".join(f"{a['name']}({a['delta']:+.1f})" for a in top[:5]))
+        # 沒有對應分區的出裝行（召喚師技能、資料來源）留在分區之外
+        parts.extend(groups.get("misc") or [])
         if snap.get("vision", {}).get("blank"):
             parts.append("<span style='color:#ff7a6b'>截圖全黑，請把遊戲改成無邊框</span>")
         parts.append(f"<span style='color:#8b93a7'>{data_status_html(snap.get('data', {}))}</span>")
@@ -535,7 +665,15 @@ class ControlPanel(QWidget):
         html = "<br>".join(parts)
         if self.info.text() != html:
             self.info.setText(html)
-            self.adjustSize()
+
+        for key in ("adjust", "core", "shoes", "start", "full"):
+            self._set_section(key, groups.get(key) or [])
+        self._set_section("skills", [_strip_marker(skills)] if skills else [])
+        self._set_section("augments", ["、".join(f"{a['name']}({a['delta']:+.1f})" for a in augments[:5])]
+                          if augments else [])
+        # 還沒有組合資料：標題照顯示，內容給佔位提示，不編造
+        self._set_section("combos", [], _NO_COMBOS)
+        self.adjustSize()
 
 
 class Overlay:
@@ -619,6 +757,9 @@ def run(make_engine, minimized: bool = False) -> int:
     app.setWindowIcon(app_icon())
 
     name = f"{SINGLE_INSTANCE}-{getpass.getuser()}"
+    # 只在開發／並行驗證時設定；正常使用者仍共用一個單例名稱。
+    if suffix := os.environ.get("ARAMHEX_INSTANCE_SUFFIX", "").strip():
+        name += f"-{suffix}"
 
     def notify_running() -> bool:
         for _ in range(3):  # 已有的助手可能正忙，多試幾次

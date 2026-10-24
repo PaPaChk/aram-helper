@@ -25,6 +25,18 @@ def test_matcher_tolerates_ocr_noise():
     assert m.match("A")[0] is None
 
 
+def test_engine_matcher_uses_tw_catalog_when_tencent_static_is_stale(store, tmp_path):
+    """靜態資料還沒補到新 ID 時，仍要用台服 catalog 名稱完成 OCR 識別。"""
+    from lolhex.config import Settings
+    from lolhex.engine import Engine
+
+    engine = Engine(Settings(), home=tmp_path, store=store)
+    matcher = engine._augment_matcher()
+    assert matcher.match("終極革新")[0] == "1088"
+    assert matcher.match("風語者的祝福")[0] == "1095"
+    assert matcher.match("最終型態")[0] == "1344"
+
+
 rapidocr = pytest.importorskip("rapidocr")
 synth = pytest.importorskip("synth")
 if not synth.fonts_available():
@@ -63,6 +75,21 @@ def test_full_scan_calibrates_and_strip_tracks_reroll(detector, size):
     assert detector.column_of((b[0] + b[2]) // 2, b[3] + 50, win) == 2
 
 
+@pytest.mark.parametrize("ui_scale", [0.75, 1.0, 1.25])
+@pytest.mark.parametrize("size", [(1920, 1080), (2560, 1440)])
+def test_dynamic_detection_handles_ui_scale(tmp_path, size, ui_scale):
+    """卡牌大小隨玩家 UI scale 改變，首次偵測仍要由 OCR 自行建立校準。"""
+    from lolhex.vision.detector import AugmentDetector
+
+    det = AugmentDetector(NameMatcher(NAMES), tmp_path / "ignored.json")
+    det.ensure_calibration(*size)
+    assert det.calibration is None
+    offer = det.scan_full(synth.render_offer(
+        ["質變：稜鏡", "燃燒利息", "幻影武器"], size, ui_scale=ui_scale))
+    assert names(offer) == ["質變：稜鏡", "燃燒利息", "幻影武器"]
+    assert det.calibration is not None
+
+
 def test_two_cards_are_placed_by_symmetry(detector):
     size = (3840, 2160)
     assert names(detector.scan_full(synth.render_offer(["燃燒利息", None, "幻影武器"], size))) == ["燃燒利息", None, "幻影武器"]
@@ -73,18 +100,13 @@ def test_no_offer_on_plain_screen(detector):
     assert detector.scan_full(synth.render_offer([None, None, None], (3840, 2160), seed=9)) is None
 
 
-@pytest.mark.parametrize("size", [(3840, 2160), (1920, 1080), (2560, 1600)])
-def test_default_calibration_reads_first_offer(tmp_path, size):
-    """沒校準過也能直接走輕量檢查；三張都對上後存成本機校準。"""
+def test_no_guessed_calibration_is_loaded_from_disk(tmp_path):
+    """舊版留下的比例框不可信；首次偵測必須先跑整屏 OCR。"""
     from lolhex.vision.detector import AugmentDetector
-    from lolhex.vision.window import Rect
-    det = AugmentDetector(NameMatcher(NAMES), tmp_path / "calibration.json")
-    det.ensure_calibration(*size)
-    assert det.calibrated_for(*size) and not det.confirmed_for(*size)
-    win = Rect(0, 0, *size)
-    sr = det.strip_rect(win)
-    frame = synth.render_offer(["質變：稜鏡", "燃燒利息", "幻影武器"], size)
-    offer = det.check_strip(frame[sr.top:sr.bottom, sr.left:sr.right], win)
-    assert names(offer) == ["質變：稜鏡", "燃燒利息", "幻影武器"]
-    assert det.confirmed_for(*size)
-    assert AugmentDetector(NameMatcher(NAMES), tmp_path / "calibration.json").confirmed_for(*size)
+
+    path = tmp_path / "calibration.json"
+    path.write_text('{"boxes": [[0,0,1,1]], "size": [1920, 1080]}', encoding="utf-8")
+    det = AugmentDetector(NameMatcher(NAMES), path)
+    det.ensure_calibration(1920, 1080)
+    assert det.calibration is None
+    assert not det.confirmed_for(1920, 1080)

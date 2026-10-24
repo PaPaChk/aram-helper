@@ -7,10 +7,10 @@
 AppId={{1107079E-6C48-46FD-938D-04B1C3EA9A72}
 AppName=AramHex 臺服版
 AppVersion={#AppVersion}
-AppPublisher=czgreat
-AppPublisherURL=https://github.com/czgreat/aramhex
-AppSupportURL=https://github.com/czgreat/aramhex/issues
-AppUpdatesURL=https://github.com/czgreat/aramhex/releases
+AppPublisher=PaPaChk
+AppPublisherURL=https://github.com/PaPaChk/aram-helper
+AppSupportURL=https://github.com/PaPaChk/aram-helper/issues
+AppUpdatesURL=https://github.com/PaPaChk/aram-helper/releases
 DefaultDirName={localappdata}\Programs\AramHexTW
 DefaultGroupName=AramHex 臺服版
 ; 裝到使用者目錄，不需要管理員許可權；始終"只為當前使用者安裝"（解除安裝資訊寫在 HKCU），線上更新才能改「應用」列表裡的版本號

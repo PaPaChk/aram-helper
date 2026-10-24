@@ -6,7 +6,7 @@
 lolhex/
   __main__.py          入口（python -m lolhex）
   engine.py            排程：視窗狀態、選人識別、三選一識別、推薦
-  config.py            配置檔案和目錄（安裝版 %APPDATA%\AramHex，便攜版 程式目錄\userdata）
+  config.py            配置檔案和目錄（安裝版 %APPDATA%\AramHexTW，便攜版 程式目錄\userdata）
   update.py            程式更新：查 GitHub Releases 有沒有新版本（連不上時查 jsDelivr）
   patch.py             增量更新：只下載變了的檔案（updates 分支，GitHub / jsDelivr），退出後替換，失敗還原
   recommend.py         三選一評分

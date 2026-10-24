@@ -24,14 +24,14 @@ def fonts_available() -> bool:
 
 
 def render_offer(names: list[str | None], size=(3840, 2160), seed: int = 0,
-                 desc: str = "獲得1個隨機強化符文。") -> np.ndarray:
+                 desc: str = "獲得1個隨機強化符文。", ui_scale: float = 1.0) -> np.ndarray:
     """返回 BGR 圖。names 中 None 表示該位置不畫卡。卡片按螢幕中心對稱排布。"""
     W, H = size
     rng = np.random.default_rng(seed)
     base = rng.integers(10, 70, (H, W, 3), dtype=np.uint8)
     img = Image.fromarray(base)
     d = ImageDraw.Draw(img)
-    s = H / 1080
+    s = H / 1080 * ui_scale
     title = _font(FONT_BOLD, int(26 * s))
     small = _font(FONT, int(14 * s))
     # 卡距、標題高度按國服 4K 實機校準結果（標題中心約 0.41H，左右卡距約 369×s）

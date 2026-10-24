@@ -69,7 +69,8 @@ def win_ranks(augments: dict, static: dict) -> dict:
 
 
 def evaluate(store, hero_id: str | None, slots: list[str | None], k: int = 300) -> dict:
-    hero = store.hero(hero_id) if hero_id else None
+    # 三選一辨識執行緒不能因單英雄官方資料逾時而卡住；資料由 Engine 背景預取。
+    hero = store.hero(hero_id, allow_network=False) if hero_id else None
     ag = store.win_data(hero_id) if hero_id else None
     label = (ag or {}).get("label") or "自採統計"
     ag_augs = (ag or {}).get("augments") or {}

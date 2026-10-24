@@ -123,12 +123,13 @@ def test_sync_disabled(tmp_path, monkeypatch):
 
 
 def test_real_bundled_data_is_valid():
-    """倉庫裡隨程式釋出的內建資料：清單、校驗、分段都完整。"""
+    """倉庫裡隨程式釋出的內建資料：清單和校驗完整；新版本早期可暫時沒有分段。"""
     if not (public.BUNDLED_DIR / "latest.json").exists():
         pytest.skip("還沒有放內建資料（scripts/update_data.py）")
     ds = Dataset(public.BUNDLED_DIR, "bundled")
     heroes, augs = ds.table(None)
-    assert len(heroes) > 150 and ds.bands_available()
+    assert len(heroes) > 150
+    assert ds.bands_available() is bool(ds.manifest.get("bands"))
     assert all(0 < h["win_rate"] < 1 for h in heroes.values())
 
 

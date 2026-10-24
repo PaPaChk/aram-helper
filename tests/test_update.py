@@ -65,6 +65,17 @@ def test_version_compare():
     assert not update.is_newer("", "0.3.17")
 
 
+def test_setup_asset_names_match_what_we_actually_build():
+    """台服版的安裝包叫 AramHexTW-Setup-<版本>.exe，版本帶 '+'（1.0.0+tw.5）。
+    這個正則先前只認 AramHex-Setup-...，會讓自動更新永遠找不到安裝包。"""
+    assert update.FILE_RE.match("AramHexTW-Setup-1.0.0+tw.5.exe")
+    assert update.FILE_RE.match("AramHexTW-Setup-1.0.0+tw.6.exe")
+    assert update.FILE_RE.match("AramHex-Setup-1.1.0.exe")      # 上游國服版也照收
+    assert not update.FILE_RE.match("AramHexTW-Portable-1.0.0.zip")
+    assert not update.FILE_RE.match("AramHex-Setup-x.exe")
+    assert not update.FILE_RE.match("evil.exe")
+
+
 def test_check_and_download(gh, tmp_path):
     state, base = gh
     api = f"{base}/latest"

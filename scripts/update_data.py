@@ -22,6 +22,8 @@ sys.path.insert(0, str(ROOT))
 from lolhex.data.public import RAW_BASE, Dataset, check_manifest  # noqa: E402
 
 BUNDLED = ROOT / "lolhex" / "data" / "bundled"
+# 台服翻譯目錄和上游統計資料共用 bundled/；更新統計資料時不能把它刪掉。
+FORK_LOCAL_FILES = ("tw-catalog.json",)
 
 
 def _get(url: str) -> bytes:
@@ -46,6 +48,8 @@ def main(argv=None) -> int:
         manifest = json.loads(_get(f"{RAW_BASE}/latest.json"))
         read = lambda name: _get(f"{RAW_BASE}/{manifest['path']}/{name}")  # noqa: E731
     check_manifest(manifest)
+    preserved = {name: (BUNDLED / name).read_bytes() for name in FORK_LOCAL_FILES
+                 if (BUNDLED / name).is_file()}
     tmp = BUNDLED.with_name("bundled.new")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
@@ -61,6 +65,8 @@ def main(argv=None) -> int:
         ds = Dataset(tmp, "bundled")
         shutil.rmtree(BUNDLED, ignore_errors=True)
         tmp.rename(BUNDLED)
+        for name, body in preserved.items():
+            (BUNDLED / name).write_bytes(body)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"内置数据已更新：{ds.patch}，样本截至 {ds.snapshot_at}，{len(manifest['files'])} 个文件")

@@ -33,9 +33,14 @@ LAYOUT: dict[str, list[tuple[float, float, float, float]]] = {
     # 左側我方 5 人的圓形頭像，直徑約 86，行距 120
     "team": [_r(85, 160 + 120 * i, 171, 246 + 120 * i) for i in range(5)],
 }
-# 預選欄左邊的"可用"兩個字：只有選英雄介面有，用來確認當前介面，避免在大廳等介面誤標
-MARKER_BOX = _r(420, 28, 500, 64)
-MARKER_TEXT = "可用"
+# 預選欄左邊的"可使用的英雄"：只有選英雄介面有，用來確認當前介面，避免在大廳等介面誤標。
+# 量自 2026-10 台服客戶端實機截圖：文字實際範圍 x 358..482, y 31..59（1920×1080 基準）。
+# 這個框必須留在該範圍內：往左或往下放大就會框到大廳的《英雄聯盟》導覽列（x 349..477, y 46..79），
+# OCR 會改讀到導覽列的字，於是永遠認不出選英雄介面。
+MARKER_BOX = _r(352, 28, 492, 62)
+# 標題實際文字是「可使用的英雄」。原本只比對「可用」，但三個字並不連續（可-使-用），
+# 用 in 比對永遠不會成立，於是整個選英雄介面都判定失敗。這裡放真正會出現的字串。
+MARKER_TEXT = ("可使用的英雄", "可使用", "可用")
 # 開局"選擇你的英雄"：標題、卡片稱號所在的橫條、卡片上下邊和半寬
 CARD_TITLE_BOX = _r(780, 155, 1140, 220)
 CARD_TITLE_TEXT = "選擇你的英雄"
@@ -100,7 +105,15 @@ def is_champ_select(img, recognize, memo=None) -> bool:
 
 
 def _has_text(want):
-    return lambda r: r[1] >= 0.6 and want in (r[0] or "").replace(" ", "")
+    """want 可以是字串或字串tuple：任何一個出現就算命中。"""
+    wants = (want,) if isinstance(want, str) else tuple(want)
+
+    def check(r):
+        if r[1] < 0.6:
+            return False
+        text = (r[0] or "").replace(" ", "")
+        return any(w in text for w in wants)
+    return check
 
 
 def _crop(img, box):
