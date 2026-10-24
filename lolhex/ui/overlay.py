@@ -570,10 +570,23 @@ class ControlPanel(QWidget):
     def _link(self, href):
         if href == "rescan":
             self.engine.rescan()
+            self._flash("已重新識別")
+            self.give_back_focus()
+        elif href == "hardreset":
+            # 「重新識別」按不動時（校準卡在錯的位置）用這個：整個識別狀態回到乾淨
+            self.engine.hard_reset()
+            self._flash("已重設識別，重新找卡片位置")
             self.give_back_focus()
         elif href == "quit":
             self.engine.stop()
             QApplication.quit()
+
+    def _flash(self, text: str) -> None:
+        """在浮窗的即時資訊區顯示一句結果，讓使用者知道按了有效（幾秒後自動恢復）。"""
+        self._flash_until = time.monotonic() + 4.0
+        self._flash_text = text
+        self.info.setText(f"<span style='color:#5fd38d'>{text}</span>")
+        self.adjustSize()
 
     def place(self, rect) -> None:
         self.adjustSize()
@@ -661,8 +674,12 @@ class ControlPanel(QWidget):
             parts.append("<span style='color:#ff7a6b'>截圖全黑，請把遊戲改成無邊框</span>")
         parts.append(f"<span style='color:#8b93a7'>{data_status_html(snap.get('data', {}))}</span>")
         parts.append("<a href='rescan' style='color:#62a8ff'>重新識別</a>　"
+                     "<a href='hardreset' style='color:#e7c35a'>重設識別</a>　"
                      "<a href='quit' style='color:#ff7a6b'>退出助手</a>")
         html = "<br>".join(parts)
+        # 按鈕回饋：顯示幾秒後恢復正常內容
+        if getattr(self, "_flash_until", 0) > time.monotonic():
+            html = f"<span style='color:#5fd38d'>{self._flash_text}</span><br>{html}"
         if self.info.text() != html:
             self.info.setText(html)
 

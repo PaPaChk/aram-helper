@@ -43,6 +43,21 @@ def _setup_logging(debug: bool) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def _ensure_dpi_awareness_for_capture() -> None:
+    """非 GUI 分支：先確定程序的 DPI 感知，量度與截圖才在同一個像素空間。
+
+    沒有 Qt 幫忙時，mss 會在它自己第一次截圖時才呼叫 shcore.SetProcessDpiAwareness(2)
+    （mss/windows/gdi.py），於是同一次執行裡 client_rect() 在截圖前後回報兩種尺度
+    （實測 2560x1440 → 3840x2160），視窗矩形和實際截到的 frame 就對不上。
+
+    GUI 分支刻意不呼叫這個：Qt 建立 QApplication 時已經設成 per-monitor v2，先呼叫
+    這裡會把它降級成 v1（實測會印出 SetProcessDpiAwarenessContext() failed）。
+    GUI 路徑的 client_rect() 與 capture.grab() 已實測一致（3840x2160 兩邊相同）。
+    """
+    from .vision.window import enable_dpi_awareness
+    enable_dpi_awareness()
+
+
 def _scan_image(engine, path: str, hero: str | None) -> int:
     import cv2
     import numpy as np
@@ -106,8 +121,7 @@ def main(argv=None) -> int:
         return _scan_image(Engine(settings), args.scan_image, args.hero)
 
     if args.headless:
-        from .vision.window import enable_dpi_awareness
-        enable_dpi_awareness()
+        _ensure_dpi_awareness_for_capture()
         engine = Engine(settings)
         engine.start()
         print("海克斯大亂鬥助手已啟動（無介面）。Ctrl+C 退出")

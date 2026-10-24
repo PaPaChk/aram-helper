@@ -20,21 +20,39 @@ def normalize(s: str) -> str:
 
 
 class NameMatcher:
-    def __init__(self, names: dict[str, str], threshold: float = 72.0):
-        """names: {id: 顯示名}。"""
+    def __init__(self, names: dict[str, str], threshold: float = 72.0,
+                 preferred: set[str] | None = None):
+        """names: {id: 顯示名}。preferred: 評分層認得的 id（同一個名字對到多個 id 時優先）。
+
+        同一個名字常常同時存在於兩套 id：騰訊 static.json 的 1000+n（1115「頂狙武器」）
+        與 CommunityDragon 的裸 n（115）。舊版把兩者都塞進平行陣列、靠 dict 走訪順序
+        決定誰贏，於是同一個名字有時解析成有勝率資料的 id、有時解析成沒資料的 id，
+        正確的識別結果就變成「暫無可靠資料」，甚至把推薦指向另一張卡。
+        現在同名只保留一個 id，並按 (preferred, id 長度, id) 穩定挑選，與走訪順序無關。"""
         self.threshold = threshold
+        self._preferred = set(preferred or ())
         self._ids: list[str] = []
         self._keys: list[str] = []
+        best: dict[str, tuple[tuple, str]] = {}
         for i, value in names.items():
             variants = value if isinstance(value, (list, tuple, set)) else [value]
-            seen = set()
             for name in variants:
                 for candidate in (name or '', _LOCALIZER.tw(name or '')):
                     k = normalize(candidate)
-                    if k and k not in seen:
-                        seen.add(k)
-                        self._ids.append(i)
-                        self._keys.append(k)
+                    if not k:
+                        continue
+                    rank = self._rank(i)
+                    cur = best.get(k)
+                    if cur is None or rank < cur[0]:
+                        best[k] = (rank, i)
+        for k in sorted(best):  # 排序：索引順序也要穩定，否則同分時 partial 匹配會飄
+            self._keys.append(k)
+            self._ids.append(best[k][1])
+
+    def _rank(self, i: str) -> tuple:
+        """越小越優先：評分層認得的 id > 較長的 id（騰訊 1000+n）> 字串本身（穩定）。"""
+        sid = str(i)
+        return (0 if sid in self._preferred else 1, -len(sid), sid)
 
     def __len__(self) -> int:
         return len(self._keys)

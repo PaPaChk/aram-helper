@@ -92,7 +92,56 @@ def is_foreground(hwnd: int) -> bool:
 
 _overlay_windows: set[int] = set()          # 浮層：受 allow_capture 控制
 _hidden_windows: set[int] = set()           # 永遠排除（主視窗：絕不能蓋到識別區域）
+_own_windows: set[int] = set()              # 自己的頂層窗（主視窗）：前臺是它也不算「切走了」
 _capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 除錯截圖時讓懸浮層可見
+
+
+def add_own_window(hwnd: int) -> None:
+    """登記自己的頂層窗（主視窗）。主視窗一顯示就登記，見 ui/mainwindow.py showEvent。
+
+    與 _companions 分開：companion 是「貼在客戶端上的小窗，點它等於客戶端仍在前臺」，
+    is_foreground(client) 會用到；主視窗是獨立的頂層窗，兩者語意不同，不能混用，
+    否則會讓選英雄辨識誤以為客戶端在前臺（主視窗會壓住預選欄）。"""
+    if hwnd:
+        _own_windows.add(int(hwnd))
+
+
+def foreground_is_own() -> bool:
+    """前臺是不是我們自己的視窗（主視窗、浮層、貼在客戶端上的小窗）。
+
+    自己的窗要不是永遠排除截取（主視窗），就是掃描時排除（浮層），所以就算前臺是
+    它們，截遊戲客戶區拿到的仍然是遊戲的畫素（已用 mss/GDI 實測：設了
+    WDA_EXCLUDEFROMCAPTURE 的窗在前臺時，截出來仍是桌面/遊戲畫素）。"""
+    if not IS_WINDOWS:
+        return False
+    fg = int(ctypes.windll.user32.GetForegroundWindow())
+    if not fg:
+        return False
+    return fg in _own_windows or fg in _hidden_windows or fg in _overlay_windows or fg in _companions
+
+
+def scannable(hwnd: int) -> bool:
+    """這個視窗現在可以整塊截下來識別嗎？只給遊戲內的三選一識別用。
+
+    以前硬性要求視窗必須在前臺，理由是「不要識別到自己畫的字」。那個理由已由
+    exclude_from_capture 解決（主視窗 always=True、浮層掃描時排除），前臺因此不再是
+    必要條件。留著它反而造成「遊戲已經在跑時才啟動助手」永久卡在 paused：啟動時
+    搶到前臺的是助手自己的主視窗，is_foreground(game) 一直是 False，直到使用者碰一下
+    遊戲才恢復——正是使用者回報的「遊戲中重啟就沒有浮窗」。
+
+    現在前臺是遊戲本身、或我們自己的窗，就照樣掃。前臺是別的程式時仍然不掃。
+    視窗最小化／不可見／太小由 client_rect 回傳 None 擋掉；截到全黑由 is_blank 擋掉。
+    刻意不動 is_foreground：選英雄辨識（engine.py `is_foreground(client)`）要維持
+    「客戶端真的在前臺」的嚴格語意，不能一併放寬。"""
+    if not hwnd:
+        return False
+    if is_foreground(hwnd):
+        return True
+    if not IS_WINDOWS:
+        return False
+    if ctypes.windll.user32.IsIconic(hwnd):
+        return False
+    return foreground_is_own()
 
 
 def exclude_from_capture(hwnd: int, always: bool = False) -> None:

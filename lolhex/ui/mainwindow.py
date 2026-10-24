@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
         btns = QHBoxLayout()
         b1 = QPushButton("重新識別")
         b1.clicked.connect(self.engine.rescan)
-        b2 = QPushButton("重新校準卡片位置")
+        b2 = QPushButton("重設識別")
         b2.clicked.connect(self._recalibrate)
         btns.addWidget(b1)
         btns.addWidget(b2)
@@ -355,7 +355,12 @@ class MainWindow(QMainWindow):
         # 主視窗永遠排除在截圖之外：選英雄辨識是讀螢幕的，主視窗若蓋在客戶端上面
         # （實測 656x743 正好壓住預選欄與「可使用的英雄」），辨識就會讀到自己的介面而全部失敗。
         # always=True：不受「錄屏時顯示浮窗」設定影響，那設定是給浮層用的。
-        win.exclude_from_capture(int(self.winId()), always=True)
+        hwnd = int(self.winId())
+        win.exclude_from_capture(hwnd, always=True)
+        # 同時登記成「自己的頂層窗」：前臺是主視窗時仍可掃遊戲。
+        # 遊戲已經在跑時才啟動助手，搶到前臺的正是這個主視窗，不登記就會永遠 paused。
+        # winId() 在 showEvent 一定已經具體化（上面的 exclude_from_capture 一直依賴這點）。
+        win.add_own_window(hwnd)
         super().showEvent(e)
 
     # ---------- 設定 ----------
@@ -573,8 +578,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "設定", "已儲存。")
 
     def _recalibrate(self):
-        self.engine.reset_calibration()
-        QMessageBox.information(self, "重新校準", "已清除卡片位置，下次出現海克斯三選一時會重新校準。")
+        self.engine.hard_reset()
+        QMessageBox.information(self, "重設識別",
+                                "已清除卡片位置、指紋快取和三選一結果。\n"
+                                "下一輪會重新整屏找一次卡片位置；遊戲中按也安全。\n\n"
+                                "設定、統計資料和截圖都沒有動。")
 
     # ---------- 更新 ----------
 

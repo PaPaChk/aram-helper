@@ -168,6 +168,22 @@ class Engine:
         self.state["vision"]["calibrated"] = False
         self._rescan.set()
 
+    def hard_reset(self) -> None:
+        """完整重置識別狀態：「重新識別」按不動時，使用者一按就回到乾淨狀態。
+
+        清掉校準、指紋快取、三選一與選英雄的識別結果，然後立刻排一次整屏掃描。
+        刻意不動：設定、資料快取、截圖、英雄的手動選擇——按一下不該丟掉使用者的東西。
+        遊戲中按也安全：只是下一輪從整屏重新找卡片位置。"""
+        if self._detector:
+            self._detector.reset_calibration()
+            self._detector._pending = None
+        self._cs_memo = None
+        self.state["vision"].update(calibrated=False, blank=False)
+        self._set(offer=None, evaluation=None, champ_select=None,
+                  hero_candidates=[], level=None)
+        self._rescan.set()
+        log.info("已硬重置識別狀態（校準、快取、三選一結果）")
+
     def hero_panel(self, hero_key) -> dict | None:
         hid = self.store.resolve_hero(hero_key)
         if self._panel_cache[0] == hid and self._panel_cache[1]:
@@ -221,7 +237,11 @@ class Engine:
                 have = {str(v) for v in (names[aid] or []) if v}
                 if official not in have:
                     names[aid] = list(names[aid]) + [official]
-        return NameMatcher(names, self.settings.match_threshold)
+        # 同一個名字可能同時對到騰訊 id（1000+n，有勝率資料）和 CommunityDragon 裸 id
+        # （115/41，沒有資料）。告訴 matcher 哪一邊才是評分層認得的，否則會靠 dict
+        # 走訪順序亂挑，正確識別的卡變成「暫無可靠資料」甚至推薦錯誤。
+        known = {str(a) for a in self.store.augments} | {str(a) for a in self.store.ranks.get("augments") or {}}
+        return NameMatcher(names, self.settings.match_threshold, preferred=known)
 
     def _hero_matcher(self) -> NameMatcher:
         heroes = self.store.heroes
@@ -466,7 +486,10 @@ class Engine:
                 continue
             hwnd = win.find_game_window()
             rect = win.client_rect(hwnd)
-            if not rect or not win.is_foreground(hwnd):
+            # 前臺不必是遊戲：主視窗／浮層都排除在截取之外，截到的仍是遊戲畫素。
+            # 見 vision.window.scannable——舊的 is_foreground 硬性要求會令「已在遊戲中
+            # 才啟動助手」永遠 paused，因為啟動時搶到前臺的是助手自己的主視窗。
+            if not rect or not win.scannable(hwnd):
                 self.state["vision"]["status"] = "paused"
                 self._stop.wait(0.5)
                 continue
@@ -482,21 +505,25 @@ class Engine:
                 if det.calibrated_for(rect.width, rect.height) and not forced:
                     if now - last_strip >= self.settings.scan_interval_ms / 1000 * self.settings.speed_factor:
                         last_strip = now
-                        offer = det.check_strip(capture.grab(det.strip_rect(rect)), rect)
-                        ran = True
+                        strip_rect = det.strip_rect(rect)
+                        if strip_rect is not None:  # 校準剛被 ensure_frame 丟掉時會是 None
+                            offer = det.check_strip(capture.grab(strip_rect), rect)
+                            ran = True
                         # 一直識別不到：整塊掃描一次，防止卡片位置變了；
                         # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
                         confirmed = det.confirmed_for(rect.width, rect.height)
                         every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
                         if offer is None and not visible and now - last_full > every:
                             last_full = now
-                            offer = det.scan_full(capture.grab(rect), (rect.left, rect.top))
+                            offer = det.scan_full(capture.grab(rect), (rect.left, rect.top),
+                                                  expect=(rect.width, rect.height))
                 elif forced or now - last_full >= self.settings.bootstrap_interval_s * self.settings.speed_factor:
                     last_full = now
                     frame = capture.grab(rect)
                     blank = capture.is_blank(frame)
                     self.state["vision"]["blank"] = blank
-                    offer = None if blank else det.scan_full(frame, (rect.left, rect.top))
+                    offer = None if blank else det.scan_full(frame, (rect.left, rect.top),
+                                                            expect=(rect.width, rect.height))
                     ran = True
             except Exception:
                 log.exception("識別異常")
