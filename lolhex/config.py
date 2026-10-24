@@ -77,8 +77,10 @@ class Settings:
     data_band: str = ""
     # 識別頻率（見 SPEEDS）：standard / saver / low。
     speed: str = "standard"
-    # 錄屏、截圖時顯示浮窗（直播、做影片用）。預設不顯示：畫面乾淨，也不會識別到自己畫的字。
-    allow_capture: bool = False
+    # 錄屏、截圖時顯示浮窗。預設開啟：使用者要能截圖、錄影分享浮窗內容。
+    # 識別時另有機制自動排除浮窗（見 ui/autoshot.py 與 vision/window.py），
+    # 不會因為浮窗可被截取而讀到自己畫的字。
+    allow_capture: bool = True
     # 自動截圖：海克斯三選一和選英雄時自動儲存整屏截圖（含浮窗），存在 <程式資料目錄>/screenshots。
     auto_screenshot: bool = False
     # 查分：自己的「名字#編號」和上次查到的結果（{"as_of", "results", "queried_at"}）
