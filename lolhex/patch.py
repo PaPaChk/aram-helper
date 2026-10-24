@@ -47,10 +47,12 @@ def tag_for(version: str) -> str:
 
 
 def sources_for(version: str) -> list[str]:
+    """增量更新的來源。台服版一律取自本倉庫：上游的 MIRROR 是 aramhex.com，
+    那裡放的是國服版的檔案，版本號對得上也不該用。"""
     from . import cloud
     tag = tag_for(version)
     extra = [u.replace("{version}", version).rstrip("/") for u in cloud.mirrors("update")]
-    return (extra + [f"{MIRROR}/{version}", f"https://raw.githubusercontent.com/{GITHUB_REPO}/{tag}"]
+    return (extra + [f"https://raw.githubusercontent.com/{GITHUB_REPO}/{tag}"]
             + [f"https://{host}/gh/{GITHUB_REPO}@{tag}" for host in JSD_HOSTS]
             # 分支地址兜底（1.0.3 釋出時還沒有 tag）；清單版本對不上會被跳過
             + [f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}"]

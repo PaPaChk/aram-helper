@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout, 
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar, QScrollArea,
                                QPushButton, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget)
 
-from .. import APP_UPDATES_ENABLED, DATA_HOMEPAGE, HELP_PAGE, HOMEPAGE, WEBSITE, __version__, cloud, patch, rank, update
+from .. import (APP_UPDATES_ENABLED, DATA_HOMEPAGE, HELP_PAGE, HOMEPAGE, UPSTREAM_MIN_VERSION_ENABLED,
+                WEBSITE, __version__, cloud, patch, rank, update)
 from ..config import SPEEDS, is_portable
 from ..vision import window as win
 from ..data.public import BANDS
@@ -535,10 +536,10 @@ class MainWindow(QMainWindow):
             box.exec()
             if b_open is not None and box.clickedButton() is b_open:
                 webbrowser.open(notice["url"])
-        # 台服版停用上游程式更新；雲控的 min_version 是上游國服版本號，
-        # 直接比較會把 1.0.0+tw.4 誤判成比 1.1.0 舊，並引導使用者下載錯誤版本。
+        # 台服版不採用上游的版本門檻：雲控的 min_version 是國服版本號（1.1.0），
+        # 直接比較會把 1.0.0+tw.6 誤判成太舊，並把使用者引導去下載國服版。
         minv = cfg.get("min_version") or ""
-        if (APP_UPDATES_ENABLED and minv and update.is_newer(minv, __version__)
+        if (UPSTREAM_MIN_VERSION_ENABLED and minv and update.is_newer(minv, __version__)
                 and not getattr(self, "_min_warned", False)):
             self._min_warned = True
             box = QMessageBox(QMessageBox.Warning, "需要更新", f"當前版本 {__version__} 太舊，請更新到最新版本。", parent=self)
@@ -674,9 +675,10 @@ class MainWindow(QMainWindow):
     def _start_update(self):
         if not self._update_info or (self._worker and self._worker.isRunning()):
             return
-        # 原始碼執行、又沒有安裝包地址：只能開啟下載頁
+        # 原始碼執行、便攜版、或沒有安裝包地址：只能開啟本倉庫的下載頁。
+        # 不可以開 aramhex.com——那裡是國服版。
         if patch.install_root() is None and (is_portable() or not self._update_info.get("url")):
-            webbrowser.open(WEBSITE)
+            webbrowser.open(update.DOWNLOAD_PAGE)
             return
         if self.engine.snapshot().get("phase") == "ingame":
             QMessageBox.information(self, "更新", "正在對局中，打完這局再更新。")
@@ -714,17 +716,14 @@ class MainWindow(QMainWindow):
         self.update_progress.hide()
         self.btn_update.setEnabled(True)
         self.btn_update.setText("重試更新")
-        links = links or {}
-        pan = links.get("portable" if is_portable() else "setup")
+        # 台服版沒有網盤：一律導到本倉庫的 Releases。links 參數保留給舊呼叫點，
+        # 但它的內容來自上游雲控（國服 123pan），不能採用。
         box = QMessageBox(QMessageBox.Information, "更新", f"{reason}請下載新版本，直接覆蓋安裝，設定會保留。", parent=self)
-        b_pan = box.addButton("網盤下載", QMessageBox.AcceptRole)
-        b_site = box.addButton("官網下載", QMessageBox.ActionRole)
+        b_site = box.addButton("前往下載", QMessageBox.AcceptRole)
         box.addButton("取消", QMessageBox.RejectRole)
-        box.setDefaultButton(b_pan)
+        box.setDefaultButton(b_site)
         box.exec()
-        if box.clickedButton() is b_pan:
-            webbrowser.open(pan or update.DOWNLOAD_PAGE)
-        elif box.clickedButton() is b_site:
+        if box.clickedButton() is b_site:
             webbrowser.open(update.DOWNLOAD_PAGE)
 
     def _install(self, path: str):

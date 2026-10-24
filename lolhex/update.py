@@ -25,7 +25,7 @@ from pathlib import Path
 
 import requests
 
-from . import GITHUB_REPO, MIRROR, RELEASES_PAGE, WEBSITE
+from . import DOWNLOAD_PAGE, GITHUB_REPO, MIRROR, RELEASES_PAGE, WEBSITE
 
 log = logging.getLogger(__name__)
 API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -39,8 +39,8 @@ _VERSION = re.compile(r'^__version__\s*=\s*"([0-9][0-9A-Za-z.\-]*)"', re.M)
 
 PROBE_HOSTS = ("fastly.jsdelivr.net", "gcore.jsdelivr.net")
 SITE_LATEST = f"{MIRROR}/latest.json"
-DOWNLOAD_PAGE = f"{WEBSITE}/#download"
-SLOW_BPS = 150 * 1024    # 整包下載：前 SLOW_AFTER_S 秒平均低於這個速度就放棄，改讓使用者去網盤
+# DOWNLOAD_PAGE 由 lolhex/__init__.py 指向本倉庫的 Releases（不再用官網下載區）。
+SLOW_BPS = 150 * 1024    # 整包下載：前 SLOW_AFTER_S 秒平均低於這個速度就放棄，改讓使用者去下載頁
 SLOW_AFTER_S = 12
 
 
@@ -49,10 +49,13 @@ class SlowDownload(Exception):
 
 
 def pan_links(timeout: float = 6) -> dict:
-    """當前的網盤連結 {"setup": ..., "portable": ...}（雲控配置，每次發版會換）；取不到返回空字典。"""
-    from . import cloud
-    d = cloud.refresh(timeout).get("downloads") or {}
-    return {k: str(d[k]) for k in ("setup", "portable") if d.get(k)}
+    """網盤連結一律不採用。
+
+    上游雲控 aramhex.com/config.json 的 downloads 指向國服的 123pan 網盤，
+    台服版照著去下載會拿到國服安裝包。台服版沒有網盤，一律回空字典，
+    呼叫端會退回 DOWNLOAD_PAGE（本倉庫的 Releases）。
+    """
+    return {}
 
 
 def check_site(current: str, timeout: float = 6, url: str = SITE_LATEST) -> dict | None:

@@ -176,13 +176,13 @@ def test_auto_update_skips_while_ingame(monkeypatch):
 
 
 def test_tw_build_ignores_upstream_min_version(monkeypatch):
-    """台服版停用上游更新，不能把國服 1.1.0 拿來和 1.0.0+tw.4 比較。"""
+    """台服版不採用上游版本門檻：雲控的 min_version 是國服 1.1.0，
+    拿來和 1.0.0+tw.6 比會誤判成太舊，並把使用者導去下載國服版。"""
     win, _ = _win()
-    monkeypatch.setattr(mainwindow, "APP_UPDATES_ENABLED", False)
 
     class NoDialog:
         def __init__(self, *args, **kwargs):
-            raise AssertionError("停用上游更新時不應顯示最低版本視窗")
+            raise AssertionError("台服版不應顯示上游最低版本視窗")
 
     monkeypatch.setattr(mainwindow, "QMessageBox", NoDialog)
     MainWindow._apply_cloud(win, {"notice": {}, "min_version": "1.1.0"})
@@ -191,7 +191,7 @@ def test_tw_build_ignores_upstream_min_version(monkeypatch):
 
 def test_upstream_min_version_still_warns_when_enabled(monkeypatch):
     win, _ = _win()
-    monkeypatch.setattr(mainwindow, "APP_UPDATES_ENABLED", True)
+    monkeypatch.setattr(mainwindow, "UPSTREAM_MIN_VERSION_ENABLED", True)
     shown = []
 
     class FakeMessageBox:
@@ -212,3 +212,25 @@ def test_upstream_min_version_still_warns_when_enabled(monkeypatch):
     monkeypatch.setattr(mainwindow, "QMessageBox", FakeMessageBox)
     MainWindow._apply_cloud(win, {"notice": {}, "min_version": "1.1.0"})
     assert len(shown) == 1 and win._min_warned
+
+
+def test_no_update_path_leads_to_the_upstream_site():
+    """台服版的每一個「去下載」路徑都必須指向本倉庫。
+
+    aramhex.com 公布的是國服版（安裝包、網盤、版本門檻都是），任何一條路走回
+    那裡，使用者就會被換成不能用的國服版。這個測試把每一條路都釘住。
+    """
+    from lolhex import DOWNLOAD_PAGE, RELEASES_PAGE, __version__, patch, update
+
+    # 下載頁與 Release 頁都指向本倉庫
+    assert DOWNLOAD_PAGE == RELEASES_PAGE
+    assert "PaPaChk/aram-helper" in DOWNLOAD_PAGE
+    assert "aramhex.com" not in DOWNLOAD_PAGE
+
+    # 網盤連結一律不採用（上游雲控給的是國服 123pan）
+    assert update.pan_links() == {}
+
+    # 增量更新的每個來源都是本倉庫
+    for url in patch.sources_for(__version__):
+        assert "aramhex.com" not in url, url
+        assert "PaPaChk/aram-helper" in url, url
