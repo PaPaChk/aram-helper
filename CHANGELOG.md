@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0+tw.7
+
+### Fixed
+
+- **The app no longer claims it is out of date.** `1.0.0+tw.6` re-enabled the
+  upstream `min_version` check, so a fresh install greeted you with
+  "需要更新 / 當前版本 1.0.0+tw.6 太舊" on startup even though nothing was wrong.
+  The Taiwan build no longer adopts the upstream (mainland) version threshold,
+  which compares against a different version number and always looked newer.
+- **Update and download links no longer send you to the mainland/CN build.**
+  Every update prompt, the "download" button and the setting that opens the
+  release page now point at this repository's Releases
+  (`PaPaChk/aram-helper/releases`), not at `aramhex.com`. Installing the CN
+  build over this one would replace it with a version that cannot read your
+  Taiwan data.
+
 ## 1.0.0+tw.6
 
 ### Added
