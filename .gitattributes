@@ -4,5 +4,5 @@
 *.isl -text
 *.png binary
 *.ico binary
-# 内置统计数据按原样保存：latest.json 里记的 SHA-256 必须和文件字节一致
+# 內建統計資料按原樣保存：latest.json 裡記的 SHA-256 必須和檔案位元組一致
 lolhex/data/bundled/** -text

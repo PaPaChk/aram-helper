@@ -4,29 +4,28 @@ Taiwan-server build of [AramHex](https://github.com/czgreat/aramhex): a Windows 
 
 ## Features
 
-- **Augment choice overlay.** When the three augment cards appear, each card gets a label (first pick / viable / consider a reroll) with the augment's rank and win rate on your champion.
+- **Augment choice overlay.** When the three augment cards appear, each card gets a label (first pick / viable / consider a reroll) plus the augment's score, win rate on your champion, and rank within its rarity. Cards with too few games are flagged instead of being recommended.
 - **Build panel.** A panel docked to the top-right or top-left of the game window with eight collapsible sections: ARAM stat adjustments, recommended augments, augment combos, skill priority, starting items, boots, core build, and other completed items. A section with nothing to show displays a "no data" placeholder instead of an empty box.
 - **Skill priority** is shown as `Q > E > W` (most-maxed first) with that ordering's pick rate and win rate.
 - **Champion select.** During champion select the client window is read (pixels only): ally champions and the bench (up to 10 champions) are annotated in place with a grade (S–D, from the win-rate percentile) and win rate, and the bench is also summarised in the main window and overlay. Your own champion is selected by hand — search by Chinese name, English name, title, or common player nickname. Local statistics appear immediately; the official build and skill order are filled in by a background download.
 - **Traditional Chinese UI** and zh-TW champion, augment and item names from a bundled Riot catalog (250 champions, 594 augments, 870 items).
 - **Screen reading only.** The app captures pixels; it does not connect to the LCU API, read game memory, inject, or send input.
-- Tray icon, single instance, optional start with Windows, and optional automatic screenshots. The overlay is hidden from screenshots and recordings by default so it cannot read its own pixels.
+- Tray icon, single instance, optional start with Windows, and optional automatic screenshots. The main window and overlay are excluded from screen capture (Windows 10 2004+) so the recogniser cannot read its own drawing; the setting **show overlay while recording** lifts that exclusion for the overlay when you want it on stream.
 
 The overlay can only draw on top of the game in borderless or windowed mode.
 
 ## Data sources (and the honest gaps)
 
-1. **arammayhem.com (zh-TW)** — per-champion builds: starting items, boots, core build and other completed items with pick and win rates; max skill order with pick and win rate; the champion / augment / item dictionary used for name resolution. Responses are cached on disk (24 h) and the site is rate-limited to one request every 0.6 s.
+1. **arammayhem.com (zh-TW)** — per-champion builds: starting items, boots, core build and other completed items with pick and win rates; max skill order with pick and win rate; the champion / augment / item dictionary used for name resolution. Everything is cached on disk (24 h refresh), and consecutive champion-page fetches are spaced at least 0.6 s apart.
 2. **Tencent public endpoints** (`game.gtimg.cn`, `mlol.qt.qq.com`) — champion list, augment dictionary, per-champion official build and skill leveling, summoner spells.
-3. **Bundled statistics snapshot** — self-collected match statistics from [czgreat/aramhex-data](https://github.com/czgreat/aramhex-data) (CC BY-NC 4.0), shipped inside the build. Augment win rates and rankings come from this snapshot, and the UI labels them as a CN-server sample ("國服樣本") with the patch number.
+3. **Bundled statistics snapshot** — self-collected match statistics from [czgreat/aramhex-data](https://github.com/czgreat/aramhex-data) (CC BY-NC 4.0), shipped inside the build. Augment win rates and rankings come from this snapshot, and the UI labels them "國服樣本" (CN-server sample) together with the patch number.
 4. **`lolhex/data/bundled/aram_adjust.json`** — per-champion ARAM modifiers (damage dealt/taken, healing, ability haste, and so on), taken from the `aram` sub-table of the League of Legends Wiki `Module:ChampionData/data` under CC BY-SA 3.0. See [NOTICE.md](NOTICE.md).
 
 Gaps, stated plainly:
 
-- arammayhem.com does not publish per-augment win rates, ARAM adjustment values, or augment combinations. Those three come from the sources above, not from the site.
-- There is still no augment-combination data source, so the augment combos section always shows its "no combo data" placeholder rather than inventing one.
+- arammayhem.com does not publish per-augment win rates, ARAM adjustment values, or augment combinations. Per-augment win rates come from the Tencent statistics and the bundled snapshot; ARAM adjustments come from the wiki file above; there is no augment-combination source at all, so that section always shows its "no combo data" placeholder rather than inventing one.
+- If the site has no usable build for a champion, or a fetch or parse fails, the panel falls back to the Tencent build data and the bundled statistics; a stale cache is preferred over a blank panel, and nothing is fabricated.
 - Augment and champion statistics are a sample of collected matches, not full-server data. Rows with few games fluctuate; the UI marks low-sample results.
-- Site parsing depends on the current HTML. If a fetch or parse fails, the previous cache is used, and without a cache the section stays empty — the app does not fabricate values.
 - The statistics are from the CN server. Only names, descriptions and item data are localised to zh-TW.
 - Champion recognition reads screen pixels at fixed proportions of the client window, measured on a 1920×1080 client and validated on TW-client captures at 1080p, 2K and 4K. A client layout that differs substantially from the measured one can defeat it.
 
@@ -46,7 +45,7 @@ Windows 10/11 x64. No Python installation is required.
 2. Run it. It installs per user to `%LOCALAPPDATA%\Programs\AramHexTW`, so no administrator rights are needed, and the wizard is in Traditional Chinese. A desktop shortcut is optional.
 3. Config and data go to `%APPDATA%\AramHexTW`.
 
-Both downloads come with `SHA256SUMS.txt`; verify the hash before running. Set `ARAMHEX_HOME` to relocate the data directory.
+Each release also publishes `SHA256SUMS.txt` with the hashes of both files; check the hash before running. Set `ARAMHEX_HOME` to relocate the config and data directory.
 
 For the overlay to appear over the game, set the game to borderless or windowed mode. If the capture comes back black, the app tells you to switch away from exclusive fullscreen.
 
@@ -55,21 +54,24 @@ For the overlay to appear over the game, set the game to borderless or windowed 
 The build is published under its own repository (`PaPaChk/aram-helper`), so the app checks **its own** GitHub Releases:
 
 1. `GET https://api.github.com/repos/PaPaChk/aram-helper/releases/latest`, skipping drafts and pre-releases, comparing against `lolhex.__version__`.
-2. It takes the release's setup installer asset and its SHA-256 from the GitHub asset digest, falling back to `SHA256SUMS.txt`.
-3. The installer is downloaded, its SHA-256 verified (a mismatch deletes the file and aborts), then launched silently with `/SILENT /CLOSEAPPLICATIONS /NORESTART`. The app exits so its files are released, and the installer relaunches it.
+2. For an installed build it first tries an incremental file update; when that is not possible it downloads the release's setup installer. Its SHA-256 comes from the GitHub asset digest, falling back to `SHA256SUMS.txt`.
+3. The download is verified against that hash (a mismatch deletes the file and aborts), then the installer runs silently with `/SILENT /CLOSEAPPLICATIONS /NORESTART`. The app exits so its files are released, and the installer relaunches it.
 
-This is controlled by the **auto update** checkbox in Settings and by the `auto_update` setting, which defaults to `true`. Updates are checked at startup, when the app is reopened, and periodically while it runs.
+This is controlled by the **auto update** checkbox in Settings and by the `auto_update` setting, which defaults to `true`. Updates are checked at startup and every 30 minutes while the app runs.
+
+### When the automatic install is skipped
+
+The app still checks, but it does not install on its own in two situations: while a match is in progress, and while the main window is hidden in the tray. In both cases the update is only announced, so it cannot interrupt a game or pop up a window behind your back. Unchecking **auto update** in Settings turns the automatic download and install off entirely; the manual **Check for updates** button then reports and offers the update instead.
 
 Deliberate limitations:
 
-- If a game is in progress, or the window is in the tray, the automatic install is skipped rather than interrupting play.
 - The portable build cannot replace itself; it opens the download page instead.
 - The aramhex.com update channel is intentionally **not** used. It publishes the upstream CN build, and following it would overwrite this TW build. Upstream minimum-version notices are ignored for the same reason.
 - Downloads that are too slow (under 150 KB/s after 12 s) are abandoned rather than left hanging.
 
 ## Configuration
 
-Settings live in `config.json` inside the data directory (`%APPDATA%\AramHexTW`, `userdata\` in the portable build, or `$ARAMHEX_HOME`). The file is created with defaults on first run and can be edited by hand; unknown keys are preserved. Most values are also editable in the Settings tab.
+Settings live in `config.json` inside the data directory (`%APPDATA%\AramHexTW`, `userdata\` in the portable build, or the directory named by the `ARAMHEX_HOME` environment variable). The file is created with defaults on first run and can be edited by hand; unknown keys are preserved. Most values are also editable in the Settings tab.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -88,6 +90,8 @@ Settings live in `config.json` inside the data directory (`%APPDATA%\AramHexTW`,
 | `riot_id` | `""` | `Name#Tag` used by the rank lookup |
 
 `aramhex.log` for the current run is written next to `config.json`.
+
+The shipped statistics snapshot contains no per-band splits, so the band selector only takes effect when the synced dataset includes them; otherwise all bands behave as the combined dataset.
 
 ## Building from source
 

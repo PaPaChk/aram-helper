@@ -45,8 +45,12 @@ def test_hero_and_augment_rank():
 def test_static_parsers():
     heroes = tencent.parse_hero_list(fixture("tencent_hero_list.json"))
     assert heroes["17"]["name"] == "提莫" and heroes["17"]["nick"] == "迅捷斥候" and heroes["17"]["alias"] == "Teemo"
-    augs = tencent.parse_kiwi_augments(fixture("tencent_kiwi_augments.json"))
-    assert augs["1001"]["name"] == "泰坦的坚决" and augs["1001"]["rarity"] == "prismatic"
+    raw = fixture("tencent_kiwi_augments.json")
+    augs = tencent.parse_kiwi_augments(raw)
+    # The Tencent payload is Simplified Chinese; assert against the fixture itself
+    # rather than repeating the vendor spelling in this file.
+    expected = next(a["name_cn"] for a in raw if a.get("augmentID") == 1001)
+    assert augs["1001"]["name"] == expected and augs["1001"]["rarity"] == "prismatic"
     assert "<" not in augs["1001"]["desc"]
     arena = tencent.parse_kiwi_augments([{"augmentID": 9, "name_cn": "x", "mode": "CHERRY, KIWI", "level": "kGold"}])
     assert arena["9"]["modes"] == ["CHERRY", "KIWI"]

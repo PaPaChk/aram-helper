@@ -1,4 +1,4 @@
-name: 发布
+name: Release
 
 on:
   push:
@@ -23,64 +23,66 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - name: 安装依赖
+      - name: Install dependencies
         run: python -m pip install -r requirements-build.txt
 
-      - name: 核对版本号
+      - name: Check the version matches the tag
         run: |
           $version = (python -c "import lolhex; print(lolhex.__version__)").Trim()
-          if ("v$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} 和 __version__ $version 不一致" }
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} does not match __version__ $version" }
 
-      - name: 更新内置统计数据
+      - name: Update the bundled statistics
         env:
           GITHUB_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
-          # 取最新的统计数据；取不到就用仓库里已提交的内置数据
-          try { python scripts/update_data.py } catch { Write-Warning "取不到最新数据，用已提交的内置数据：$_" }
-          if ($LASTEXITCODE) { Write-Warning "取不到最新数据，用已提交的内置数据"; $global:LASTEXITCODE = 0 }
+          # Take the newest statistics; if that fails, keep the bundled data already committed.
+          try { python scripts/update_data.py } catch { Write-Warning "Could not fetch new data; using the committed bundled data: $_" }
+          if ($LASTEXITCODE) { Write-Warning "Could not fetch new data; using the committed bundled data"; $global:LASTEXITCODE = 0 }
 
-      - name: 测试
+      - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
 
-      - name: 安装 Inno Setup
+      - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
-      - name: 打包
+      - name: Build
         run: pwsh -NoProfile -File packaging/build.ps1 -PythonExe python
 
-      - name: 增量更新文件（updates 分支）
+      - name: Incremental update files (updates branch)
         run: |
-          # 先于 Release 推送：用户一看到新版本，增量更新的清单和文件就已经在了
+          # Push before the Release so the manifest and files are already there
+          # by the time a user sees the new version.
           $version = "${{ github.ref_name }}".TrimStart('v')
           python -m lolhex.patch build/dist/AramHex $version build/updates
-          if ($LASTEXITCODE) { throw '生成增量更新文件失败' }
+          if ($LASTEXITCODE) { throw 'Failed to generate the incremental update files' }
           Push-Location build/updates
           git init -q -b updates
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "AramHex $version 增量更新文件"
-          # 分支给 1.0.3 用；tag 给 1.0.4 起的版本用（jsDelivr 按 tag 取是即时的，按分支取会缓存好几个小时）
+          git commit -q -m "AramHex $version incremental update files"
+          # The branch serves older clients; the tag serves newer ones.
+          # jsDelivr serves tags immediately but caches branches for hours.
           git tag "updates-v$version"
           git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" updates:updates "updates-v$version"
-          if ($LASTEXITCODE) { throw '推送 updates 分支失败' }
+          if ($LASTEXITCODE) { throw 'Failed to push the updates branch' }
           Pop-Location
-          # jsDelivr 会把分支上的文件缓存最多 12 小时：推送后刷新清单和文件
+          # jsDelivr caches branch files for up to 12 hours; purge after pushing.
           $m = Get-Content -Raw -Encoding UTF8 build/updates/manifest.json | ConvertFrom-Json
           $names = @('manifest.json') + ($m.patchable | ForEach-Object { "files/$_.gz"; "files/$_" })
           foreach ($n in $names) {
             try { Invoke-RestMethod -Uri "https://purge.jsdelivr.net/gh/${{ github.repository }}@updates/$n" -TimeoutSec 30 | Out-Null }
-            catch { Write-Warning "jsDelivr 刷新 $n 失败：$_" }
+            catch { Write-Warning "Failed to purge jsDelivr for $n : $_" }
           }
 
-      - name: 发布说明
+      - name: Release notes
         run: python scripts/release_notes.py "${{ github.ref_name }}" > build/release-notes.md
 
-      - name: 建 Release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = Get-ChildItem build/release | ForEach-Object { $_.FullName }
-          gh release create "${{ github.ref_name }}" @files --title "海克斯大乱斗助手 ${{ github.ref_name }}" --notes-file build/release-notes.md
+          gh release create "${{ github.ref_name }}" @files --title "AramHex ${{ github.ref_name }}" --notes-file build/release-notes.md

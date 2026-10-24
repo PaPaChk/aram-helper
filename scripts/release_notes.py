@@ -1,5 +1,6 @@
-"""生成 GitHub Release 说明（给玩家看，程序里的"有新版本"提示也显示它）：
-CHANGELOG.md 里这一版写了什么。只写更新了什么、修了什么，不写技术细节。
+"""Generate the GitHub Release notes (shown to players, and also displayed by
+the app's "new version available" prompt) from the CHANGELOG.md entry for the
+version. Only what changed and what was fixed; no technical detail.
 
     python scripts/release_notes.py 1.0.7 > build/release-notes.md
 """
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def notes(version: str, changelog: str) -> str:
     m = re.search(rf"(?ms)^## {re.escape(version)}\s*$(.*?)(?=^## |\Z)", changelog)
     body = m.group(1).strip() if m else f"AramHex {version}"
-    return body + "\n"  # 只写这次更新了什么；下载文件发布页下面自己列着
+    return body + "\n"  # only what changed; the release page lists the files itself
 
 
 def main(argv=None) -> int:
