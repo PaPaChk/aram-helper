@@ -34,7 +34,7 @@ VERDICT_CN = {"best": ("首選", "#2e9d5b"), "ok": ("可選", "#3b7dd8"), "rerol
               "unknown": ("未知", "#888")}
 PHASE_CN = {None: "未檢測到英雄聯盟", "client": "客戶端（請手動選擇英雄）", "ingame": "對局中"}
 VISION_CN = {"idle": "待機", "paused": "遊戲不在前臺，暫停", "scanning": "掃描中"}
-UPDATE_EVERY_MS = 30 * 60 * 1000  # 常駐時多久查一次更新
+UPDATE_EVERY_MS = 30 * 60 * 1000  # how often to check for updates while resident
 
 
 def app_icon() -> QIcon:

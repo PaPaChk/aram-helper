@@ -57,10 +57,8 @@ class Settings:
     # 啟動時檢查資料倉儲有沒有新的統計資料，有就下載（按 SHA-256 校驗）。
     check_data_updates: bool = True
     # 自動檢查 GitHub Releases 有沒有新版本，有就自動下載並安裝（裝完自動重開）。
-    # 關掉後只剩手動「檢查更新」按鈕。
+    # 關掉後只剩手動「檢查更新」按鈕。檢查頻率固定由 mainwindow.UPDATE_EVERY_MS 決定。
     auto_update: bool = True
-    # 自動更新的檢查間隔（小時）。預設 6 小時，避免太頻繁打 GitHub API。
-    auto_update_hours: float = 6.0
     # 已校準時，檢查三張卡標題區域的間隔（毫秒）。
     scan_interval_ms: int = 300
     # 未校準時，整塊中部區域檢測+識別的間隔（秒）。單次約 0.3–0.5s CPU。
