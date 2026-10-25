@@ -422,9 +422,11 @@ class Engine:
         cs = None
         if in_cs and self._icon_bank is not None:
             got = champselect.read(img, self._icon_bank, origin, self._read_hero_name, memo)
-            if got["bench"] or got["team"]:
+            if got["bench"] or got["team"] or got.get("unknown"):
                 cs = {k: [{**s, **self.hero_brief(s["hero_id"])} for s in got[k]] for k in ("bench", "team")}
                 cs["mine"] = got["mine"]
+                # 有頭像但認不出來的格子：畫面上標「無法識別」，不要靜靜留白
+                cs["unknown"] = got.get("unknown") or []
         if cards:
             cs = cs or {"bench": [], "team": [], "mine": None}
             cs["cards"] = [{**c, **self.hero_brief(c["hero_id"])} for c in cards]

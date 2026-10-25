@@ -23,8 +23,21 @@ SIDE = 20
 # 截圖小塊的平移（佔邊長比例）與縮放，覆蓋定位誤差
 SHIFTS = (-0.06, 0.0, 0.06)
 SCALES = (0.9, 1.0, 1.1)
-# 客戶端頭像比官方方形頭像放得更大（約取中間 66%），頭像庫每個英雄準備幾種放大倍數
-ZOOMS = (0.84, 0.74, 0.66)
+# 官網方形頭像 → 客戶端圓角格子的取景：多數英雄是「取中間約 84%」，
+# 但少數英雄的官方圖是半身構圖，客戶端只把臉放大填滿格子（例如艾菲利歐 Aphelios：
+# 官方圖裡臉在右下方，客戶端取的是 57% 大小、中心偏下 12% 的區域）。
+# 只用居中倍數時，這些英雄永遠認不出來（艾菲利歐實測第一名 0.68、正確答案排 65 名）。
+# 所以除了居中倍數，再準備幾個「放大 + 偏移」的取景。順序即優先次序：
+# 命中居中取景的就先算它，偏移取景只在居中取景都對不上時才有機會勝出。
+VIEWS = (
+    (0.84, 0.0, 0.0),
+    (0.74, 0.0, 0.0),
+    (0.66, 0.0, 0.0),
+    (0.57, 0.0, 0.12),    # 臉偏下的半身構圖（艾菲利歐）
+    (0.60, 0.0, 0.09),
+    (0.62, 0.0, 0.0),
+    (0.55, 0.0, 0.10),
+)
 # 實機截圖（取各倍數最好的一個）：真頭像 0.79–0.98、領先第二名 0.15 以上；
 # 空位、重新整理動畫中的暗頭像最高約 0.68，幾乎不領先
 MIN_SCORE = 0.75   # 低於它就當作不是頭像（空位、問號、鎖定圖示、別的介面圖片）
@@ -40,14 +53,22 @@ def _mask() -> np.ndarray:
 MASK = _mask()
 
 
-def _feature(img: np.ndarray, inner: float = 0.84) -> np.ndarray | None:
-    """方形頭像 → 歸一化特徵向量。inner：取中間多大比例（去掉外圈邊框）。"""
+def _feature(img: np.ndarray, inner: float = 0.84,
+             dx: float = 0.0, dy: float = 0.0) -> np.ndarray | None:
+    """方形頭像 → 歸一化特徵向量。
+
+    inner：取多大比例（去掉外圈邊框）。dx/dy：取景中心相對正中的偏移（比例），
+    用來描述客戶端「只把臉放大填滿格子」的取景方式。"""
     if img is None or img.size == 0 or min(img.shape[:2]) < 8:
         return None
     h, w = img.shape[:2]
     s = min(h, w) * inner
-    x0, y0 = int(round((w - s) / 2)), int(round((h - s) / 2))
-    crop = img[y0:y0 + int(s), x0:x0 + int(s)]
+    cx, cy = w / 2 + dx * w, h / 2 + dy * h
+    x0, y0 = int(round(cx - s / 2)), int(round(cy - s / 2))
+    x1, y1 = x0 + int(round(s)), y0 + int(round(s))
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+        return None
+    crop = img[y0:y1, x0:x1]
     small = cv2.resize(crop, (SIDE, SIDE), interpolation=cv2.INTER_AREA).astype(np.float32)
     v = small[MASK]  # (n, 3)
     v = v - v.mean(axis=0, keepdims=True)
@@ -91,12 +112,13 @@ class IconBank:
     def __init__(self, icons: dict[str, np.ndarray]):
         ids, feats = [], []
         for hid, img in icons.items():
-            fs = [_feature(img, z) for z in ZOOMS]
+            fs = [_feature(img, *v) for v in VIEWS]
             if all(f is not None for f in fs):
                 ids.append(hid)
                 feats.extend(fs)
         self.ids = ids
-        # 每個英雄 len(ZOOMS) 行，按英雄連續排列
+        # 每個英雄 len(VIEWS) 行，按英雄連續排列
+        self.nviews = len(VIEWS)
         self.mat = np.stack(feats) if feats else np.zeros((0, int(MASK.sum()) * 3), np.float32)
 
     def __len__(self) -> int:
@@ -110,7 +132,7 @@ class IconBank:
         if not vs:
             return Match(None, 0.0, 0.0)
         sims = (np.stack(vs) @ self.mat.T).max(axis=0)  # 每行取最好的截圖變體
-        sims = sims.reshape(len(self.ids), len(ZOOMS)).max(axis=1)  # 每個英雄取最好的放大倍數
+        sims = sims.reshape(len(self.ids), self.nviews).max(axis=1)  # 每個英雄取最好的取景
         order = np.argsort(-sims)
         best, second = float(sims[order[0]]), float(sims[order[1]]) if len(order) > 1 else 0.0
         hid = self.ids[order[0]] if best >= MIN_SCORE and best - second >= MIN_MARGIN else None

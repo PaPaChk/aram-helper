@@ -239,6 +239,11 @@ def champ_select_summary(cs: dict, show_win: bool = True) -> str:
     head = "待選欄"
     if mine:
         head += f"（你：{mine.get('name')} {mine.get('grade') or ''}{' ' + _pct(my_win) if show_win else ''}）"
+    n_unknown = len(cs.get("unknown") or [])
+    if n_unknown:
+        items.append(f"無法識別 {n_unknown} 個")
+    if not items:
+        return head + "：暫無資料"
     return f"{head}：" + "、".join(items)
 
 
@@ -354,6 +359,25 @@ class ChampSelectLayer(QWidget):
                     p.setPen(QColor(240, 200, 90) if s is best_card else QColor(170, 176, 190))
                     p.drawText(QRect(r.x(), line.bottom(), r.width(), r.bottom() - line.bottom()),
                                Qt.AlignHCenter | Qt.AlignTop, "★ 推薦" if s is best_card else sub)
+        # 有頭像但認不出來的格子：明確標成「無法識別」，不要留白讓使用者以為壞了
+        for u in cs.get("unknown") or []:
+            x0, y0, x1, y1 = ((u["box"][0] - ox) / dpr, (u["box"][1] - oy) / dpr,
+                              (u["box"][2] - ox) / dpr, (u["box"][3] - oy) / dpr)
+            pw = x1 - x0
+            px = max(9, int(pw * 0.20))
+            f = QFont("Microsoft YaHei UI")
+            f.setPixelSize(px)
+            f.setBold(True)
+            r = QRect(int(x0 - 4), int(y1 + 2), int(pw + 8), int(px * 1.45))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(46, 32, 12, 230))
+            p.drawRoundedRect(r, 4, 4)
+            p.setPen(QPen(QColor(232, 168, 74), 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 4, 4)
+            p.setFont(f)
+            p.setPen(QColor(240, 200, 120))
+            p.drawText(r, Qt.AlignCenter, "無法識別")
         p.end()
 
 
@@ -663,7 +687,7 @@ class ControlPanel(QWidget):
 
         parts = []
         cs = snap.get("champ_select")
-        if cs and (cs.get("bench") or cs.get("cards")):
+        if cs and (cs.get("bench") or cs.get("cards") or cs.get("unknown")):
             parts.append(champ_select_summary(cs, show_win))
         ev = snap.get("evaluation")
         if ev:

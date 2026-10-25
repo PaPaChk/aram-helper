@@ -213,6 +213,25 @@ def my_slot(img) -> int | None:
     return idx if best >= 0.02 else None
 
 
+def _looks_occupied(crop) -> bool:
+    """這個格子看起來有沒有頭像（不管認不認得出來）。
+
+    客戶端空位是近乎純色的暗框；真正的頭像是有相當色彩與明暗變化的圖。
+    用「飽和度」與「亮度標準差」兩個都很寬鬆的門檻，只排除明顯的空框，
+    不介入辨識本身——辨識結果仍然只由 IconBank 決定。"""
+    if crop is None or crop.size == 0:
+        return False
+    h, w = crop.shape[:2]
+    bs = max(4, min(h, w) // 6)
+    inner = crop[bs:h - bs, bs:w - bs] if h > 2 * bs and w > 2 * bs else crop
+    if inner.size == 0:
+        return False
+    hsv = cv2.cvtColor(inner, cv2.COLOR_BGR2HSV)
+    sat = float(hsv[..., 1].mean())
+    std = float(cv2.cvtColor(inner, cv2.COLOR_BGR2GRAY).std())
+    return sat > 35.0 and std > 18.0
+
+
 def read(img, bank: IconBank, origin: tuple[int, int] = (0, 0), name_reader=None, memo=None) -> dict:
     """截圖（客戶端客戶區）→ {"bench": [...], "team": [...], "mine": 自己的英雄 id 或 None}。
     每項 {"slot", "hero_id", "score", "box"}，box 為螢幕物理畫素座標；認不出的位置不返回。
@@ -222,6 +241,7 @@ def read(img, bank: IconBank, origin: tuple[int, int] = (0, 0), name_reader=None
     h, w = img.shape[:2]
     ox, oy = origin
     out: dict = {}
+    unknown = []   # 有頭像、但認不出來的格子：畫面上標成「無法識別」，不要靜靜留白
     names = boxes("team_name", w, h)
     for kind in LAYOUT:
         found = []
@@ -232,12 +252,17 @@ def read(img, bank: IconBank, origin: tuple[int, int] = (0, 0), name_reader=None
                 hid = memo(("name", i), img[ny0:ny1, nx0:nx1], name_reader, bool)
                 score = 1.0 if hid else 0.0
             if hid is None:
-                m = memo((kind, i), img[y0:y1, x0:x1], bank.classify)
+                crop = img[y0:y1, x0:x1]
+                m = memo((kind, i), crop, bank.classify)
                 hid, score = m.hero_id, m.score
+                if not hid and _looks_occupied(crop):
+                    unknown.append({"kind": kind, "slot": i, "score": round(float(score), 3),
+                                    "box": (x0 + ox, y0 + oy, x1 + ox, y1 + oy)})
             if hid:
                 found.append({"slot": i, "hero_id": hid, "score": round(score, 3),
                               "box": (x0 + ox, y0 + oy, x1 + ox, y1 + oy)})
         out[kind] = found
+    out["unknown"] = unknown
     me = my_slot(img)
     out["mine"] = next((s["hero_id"] for s in out["team"] if s["slot"] == me), None)
     return out

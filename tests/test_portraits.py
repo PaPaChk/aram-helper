@@ -270,3 +270,56 @@ def test_read_cards_not_stuck_after_fade_in():
     assert champselect.read_cards(frame, title, lambda c: faded, names.get, memo=memo) == []
     cards = champselect.read_cards(frame, title, lambda c: shown, names.get, memo=memo)
     assert [c["hero_id"] for c in cards] == ["268", "1"]
+
+
+def test_icon_view_with_face_zoom_and_offset():
+    """回歸：艾菲利歐（Aphelios）官方頭像是半身構圖，客戶端只把臉放大填滿格子。
+
+    以前只準備「居中取中間 66–84%」的取景，這種英雄永遠認不出來：
+    實機截圖裡正確答案排 65 名、第一名反而是別的英雄（0.68）。
+    現在多準備了「放大 + 中心偏下」的取景，兩者都要能認對。"""
+    icons = _icons()
+    bank = IconBank(icons)
+    for hid, img in icons.items():
+        h, w = img.shape[:2]
+        # 客戶端取景：圖像 57% 大小、中心往下 12%（= 艾菲利歐實測值）
+        s = int(min(h, w) * 0.57)
+        cx, cy = w / 2, h / 2 + 0.12 * h
+        x0, y0 = int(round(cx - s / 2)), int(round(cy - s / 2))
+        crop = cv2.resize(img[y0:y0 + s, x0:x0 + s], (72, 72), interpolation=cv2.INTER_CUBIC)
+        m = bank.classify(crop)
+        assert m.hero_id == hid, f"英雄 {hid} 的放大偏下取景認不出來（得到 {m.hero_id}）"
+
+
+def test_occupied_slot_with_unknown_champion_is_reported(monkeypatch):
+    """有頭像但認不出來時，要回報成 unknown（畫面上標「無法識別」），
+    真的空格子則完全不回報。不要讓使用者看到一格空白卻不知道是壞了還是沒英雄。"""
+    frame = np.full((1080, 1920, 3), 22, np.uint8)
+    layout = {"bench": [], "team": []}
+    # 一格有頭像（彩色、有明暗變化）但不在圖標庫裡 → 認不出
+    unknown_img = np.zeros((56, 56, 3), np.uint8)
+    unknown_img[:, :28] = (200, 60, 40)
+    unknown_img[:, 28:] = (40, 90, 200)
+    frame[20:76, 500:556] = unknown_img
+    layout["bench"].append((500 / 1920, 20 / 1080, 556 / 1920, 76 / 1080))
+    # 一格是真正的空位（近乎純色）
+    frame[20:76, 700:756] = (30, 26, 24)
+    layout["bench"].append((700 / 1920, 20 / 1080, 756 / 1920, 76 / 1080))
+    monkeypatch.setattr(champselect, "LAYOUT", layout)
+    got = champselect.read(frame, IconBank(_icons()), (0, 0))
+    assert got["bench"] == []
+    assert [u["slot"] for u in got["unknown"]] == [0]
+    assert got["unknown"][0]["box"] == (500, 20, 556, 76)
+
+
+def test_summary_mentions_unknown_count():
+    """彙總行要把「無法識別 N 個」寫出來，不能靜靜省略。"""
+    pytest.importorskip("PySide6")
+    from lolhex.ui.overlay import champ_select_summary
+    cs = {"mine": None, "team": [], "bench": [],
+          "unknown": [{"kind": "bench", "slot": 0, "score": 0.6, "box": (0, 0, 1, 1)},
+                      {"kind": "bench", "slot": 3, "score": 0.5, "box": (0, 0, 1, 1)}]}
+    s = champ_select_summary(cs)
+    assert "無法識別 2 個" in s
+    assert "暫無資料" not in s
+
