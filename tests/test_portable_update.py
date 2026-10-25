@@ -65,13 +65,19 @@ def test_installed_build_picks_the_setup_exe(fake_release):
     assert info["sha256"] == SHA_A
 
 
-def test_portable_falls_back_to_setup_when_zip_missing(monkeypatch):
+def test_portable_never_falls_back_to_the_installer(monkeypatch):
+    """這個版本沒放便攜版 ZIP 時，便攜版不能改用安裝包。
+
+    安裝程式會裝進 Program Files，便攜性就沒了，程式目錄裡的 userdata 也不會被帶過去。
+    正確行為是回報「有新版本但沒有可自動安裝的檔案」，讓呼叫端退回下載頁。"""
     payload = _release([_asset("AramHexTW-Setup-9.9.9.exe", SHA_A)])
     monkeypatch.setattr(update.requests, "get", lambda url, **kw: _Resp(payload))
     info = update.check("1.0.0", portable=True)
     assert info is not None
-    assert info["file"] == "AramHexTW-Setup-9.9.9.exe"
-    assert info["portable"] is False  # 退回安裝包，之後走安裝流程
+    assert info["portable"] is True
+    assert info["url"] is None          # 沒有可自動下載的檔案
+    assert info["file"] is None
+    assert info["page"]                 # 仍然給得出下載頁
 
 
 def _make_zip(path: Path, top: str, files: dict[str, bytes]) -> Path:
@@ -94,11 +100,24 @@ def test_extract_portable_strips_the_top_directory(tmp_path):
 
 
 def test_extract_portable_rejects_zip_slip(tmp_path):
+    """含有 .. 的路徑要直接拒絕整個包，而不是靜靜跳過那一項。
+
+    靜默跳過很危險：呼叫端會以為解壓完整，實際上有檔案沒拿到，
+    之後按清單替換就把程式目錄換成殘缺的一套。寧可整個更新失敗、留在舊版本。"""
     z = _make_zip(tmp_path / "evil.zip", "top", {"../escape.txt": b"x", "ok.txt": b"y"})
-    out, rels = update.extract_portable(z, tmp_path / "stage")
-    assert "../escape.txt" not in rels
-    assert "ok.txt" in rels
+    with pytest.raises(ValueError):
+        update.extract_portable(z, tmp_path / "stage")
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_extract_portable_rejects_a_flat_zip(tmp_path):
+    """沒有單一頂層目錄的包也拒絕：猜錯會把整包內容倒進程式目錄。"""
+    flat = tmp_path / "flat.zip"
+    with zipfile.ZipFile(flat, "w") as z:
+        z.writestr("a.txt", b"a")
+        z.writestr("b.txt", b"b")
+    with pytest.raises(ValueError):
+        update.extract_portable(flat, tmp_path / "stage")
 
 
 def test_swap_never_touches_userdata(tmp_path):

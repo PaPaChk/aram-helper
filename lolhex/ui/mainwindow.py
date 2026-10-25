@@ -167,7 +167,10 @@ class UpdateWorker(QThread):
                     self.manual.emit("更新檔案下載失敗。", update.pan_links())
                     return
                 if not self.info.get("url"):
-                    self.manual.emit(reason, update.pan_links())
+                    # 便攜版回報「有新版本但沒有便攜版 ZIP」時走這裡：仍然讓使用者自己去下載頁，
+                    # 但別說成增量更新失敗，否則提示與實情不符。
+                    self.manual.emit("便攜版" if self.info.get("portable") and not self.info.get("file")
+                                     else reason, update.pan_links())
                     return
                 if self.info.get("portable") or is_portable():
                     # 便攜版：下載便攜版 ZIP，交給替換指令碼在助手退出後整包疊上去。
@@ -175,7 +178,7 @@ class UpdateWorker(QThread):
                     # 指令碼會先備份，中途失敗全部挪回舊版本。ready 帶 ZIP 路徑，由 _install 分辨。
                     self.phase.emit("從 GitHub 下載便攜版…")
                     try:
-                        self.ready.emit(str(update.download(self.info, self.progress.emit)))
+                        self.ready.emit(str(update.download_portable(self.info, self.progress.emit)))
                         return
                     except update.SlowDownload as e:
                         log.info("GitHub 便攜版 %s", e)

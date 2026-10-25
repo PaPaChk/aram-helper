@@ -21,14 +21,16 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import requests
 
 from . import DOWNLOAD_PAGE, GITHUB_REPO, MIRROR, RELEASES_PAGE, WEBSITE
-from .config import program_dir
+from .config import is_portable, program_dir
 
 log = logging.getLogger(__name__)
 API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -274,58 +276,137 @@ def launch_installer(path: Path) -> None:
                      creationflags=flags, cwd=os.path.dirname(str(path)))
 
 
-# 便攜版整包更新時，ZIP 裡的頂層目錄（AramHexTW-<版本>/）要剝掉，直接把內容疊到程式目錄。
-def extract_portable(zip_path: Path, folder: Path | None = None) -> tuple[Path, list[str]]:
-    """解壓便攜版 ZIP 到暫存目錄，剝掉單一頂層目錄。
+# 便攜版整包更新：ZIP 裡的頂層目錄（AramHexTW-<版本>/）要剝掉，直接把內容疊到程式目錄。
+USER_DATA = "userdata"          # 便攜版的設定、日誌、資料和截圖都在這裡：任何情況下都不碰
+MARKER = "portable.txt"         # 便攜版標記：絕不刪除，否則程式會改用 %APPDATA%
+EXE_NAMES = ("AramHexTW.exe", "AramHex.exe")
 
-    返回（暫存目錄, 相對路徑清單）。保持這個順序與相對路徑，替換指令碼才能逐檔疊上去。
-    只接受「所有項目都在同一個頂層目錄下」的包；否則原樣返回，避免把整包內容倒進程式目錄。"""
+
+def portable_folder() -> Path:
+    """便攜版下載與解壓用的暫存目錄（每次更新都清空，不與安裝版共用）。"""
+    return Path(tempfile.gettempdir()) / "aramhex-update" / "portable"
+
+
+def download_portable(info: dict, progress=None, folder: Path | None = None) -> Path:
+    """下載便攜版 ZIP 並核對 SHA-256。
+
+    與安裝包走同一套 download()：同樣的慢速中止、同樣的雜湊校驗、不一致就刪檔。
+    多一層防護：只接受 .zip，避免把安裝包當成便攜版解壓。"""
+    if not str(info.get("file") or "").lower().endswith(".zip"):
+        raise ValueError("便攜版更新必須下載 ZIP")
+    return download(info, progress, folder=folder or portable_folder())
+
+
+def extract_portable(zip_path: Path, folder: Path | None = None) -> tuple[Path, list[str]]:
+    """解壓便攜版 ZIP 到暫存目錄，剝掉唯一的頂層目錄，返回（暫存目錄, 相對路徑清單）。
+
+    只接受「所有項目都在同一個頂層目錄下」的包：形狀不對就拋 ValueError，不做猜測——
+    猜錯會把整包內容倒進程式目錄。路徑一律驗證，寫不出程式目錄以外的東西（ZIP slip）。"""
     import zipfile
-    folder = Path(folder or Path(tempfile.gettempdir()) / "aramhex-update" / "portable")
+
+    folder = Path(folder or portable_folder() / "staging")
+    if folder.exists():
+        shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as z:
         names = [n for n in z.namelist() if n and not n.endswith("/")]
         tops = {n.split("/", 1)[0] for n in names}
-        strip = len(tops) == 1 and all("/" in n for n in names)
-        prefix = (names[0].split("/", 1)[0] + "/") if strip else ""
+        if not names or len(tops) != 1 or not all("/" in n for n in names):
+            raise ValueError("便攜版 ZIP 的目錄結構不對（應只有一個頂層目錄）")
+        prefix = names[0].split("/", 1)[0] + "/"
         rels: list[str] = []
         for name in names:
-            rel = name[len(prefix):] if prefix and name.startswith(prefix) else name
-            if not rel or rel.startswith(("/", "\\")) or ".." in rel.split("/"):
-                continue  # ZIP slip：不寫出程式目錄以外的東西
+            if not name.startswith(prefix):
+                raise ValueError("便攜版 ZIP 的目錄結構不對")
+            rel = name[len(prefix):]
+            parts = rel.replace("\\", "/").split("/")
+            if not rel or rel.startswith(("/", "\\")) or ".." in parts or ":" in rel:
+                raise ValueError(f"便攜版 ZIP 含有不安全的路徑：{name}")
             dest = folder / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             with z.open(name) as src, open(dest, "wb") as out:
-                while chunk := src.read(1 << 20):
-                    out.write(chunk)
+                shutil.copyfileobj(src, out)
             rels.append(rel.replace("\\", "/"))
     return folder, rels
 
 
-def launch_portable_update(zip_path: Path, version: str, root: Path | None = None,
-                           relaunch: str | None = None, pid: int | None = None) -> Path:
-    """便攜版：把下載好的 ZIP 解壓後，交給增量更新的替換指令碼在助手退出後疊上去。
+def _main_exe(root: Path) -> str | None:
+    """程式目錄裡的主程式檔名：優先這次執行中的 exe，其次打包的預設名稱。"""
+    running = Path(sys.executable).name if getattr(sys, "frozen", False) else ""
+    for name in ([running] if running else []) + list(EXE_NAMES):
+        if (root / name).is_file():
+            return name
+    return None
 
-    userdata 不在 ZIP 裡、也不在要替換的清單裡，所以使用者的設定、資料和截圖都不會被動到；
-    替換指令碼本來就會「先備份、失敗全部挪回去」，所以中途失敗會留在舊版本。"""
+
+def _writable(folder: Path) -> bool:
+    """程式目錄現在能不能寫（在 Program Files 下、或被設成唯讀時就不能無聲替換）。"""
+    probe = folder / ".aramhex-write-test"
+    try:
+        probe.write_bytes(b"x")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def launch_portable_update(zip_path: Path, version: str, root: Path | None = None,
+                           relaunch: str | None = None, pid: int | None = None,
+                           progress=None) -> Path:
+    """便攜版：解壓下載好的 ZIP，交給 patch.launch_apply 在助手退出後疊上新檔案。
+
+    替換策略是「逐檔覆蓋」（overlay），不是先刪掉整個目錄：
+      - 只把 ZIP 裡有的檔案換過去，其他東西（userdata、使用者自己放的檔案）一個都不動；
+      - 每個舊檔案先移到 _update_old，全部換完才刪；任何一步失敗就全部移回去，留在舊版本；
+      - userdata/* 和 portable.txt 永遠不在替換或刪除的清單裡；
+      - 舊版本有、新版本沒有的檔案才算要刪（stale），同樣排除 userdata 和 portable.txt。
+
+    這裡先做完整的前置檢查：解壓成功、找得到主程式、程式目錄可寫、暫存目錄建得起來。
+    任何一項不成立就拋異常，呼叫端據此回報失敗——絕不啟動一個可能只換到一半的替換。"""
     from . import patch
+
     root = Path(root or program_dir())
+    if not root.is_dir():
+        raise ValueError(f"程式目錄不存在：{root}")
     staging, rels = extract_portable(zip_path)
-    # 絕不替換使用者資料目錄
-    rels = [r for r in rels if not (r == "userdata" or r.startswith("userdata/"))]
-    # 把解壓好的檔案搬進程式目錄下的隱藏暫存目錄，換程序後由指令碼搬進定位
-    slot = root / patch.STAGING
-    if slot.exists():
-        import shutil
-        shutil.rmtree(slot, ignore_errors=True)
-    for rel in rels:
-        dst = slot / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        (staging / rel).replace(dst)
-    import shutil
-    shutil.rmtree(staging, ignore_errors=True)
-    return patch.launch_apply(root, rels, [], version, relaunch=relaunch or str(root / "AramHexTW.exe"),
-                              pid=pid)
+    try:
+        fresh = set(rels)
+        exe = _main_exe(root) or next((n for n in EXE_NAMES if n in fresh), None)
+        if not exe:
+            raise ValueError("便攜版 ZIP 裡沒有主程式")
+        if exe not in fresh and not (staging / exe).is_file():
+            raise ValueError("便攜版 ZIP 裡沒有主程式")
+        if not _writable(root):
+            raise ValueError("程式目錄不能寫入，無法自動替換")
+        changed = [r for r in rels if r != USER_DATA and not r.startswith(USER_DATA + "/")]
+        if not changed:
+            raise ValueError("便攜版 ZIP 是空的")
+        # 舊版本有、新版本沒有的檔案：交給替換指令碼一併移除（仍排除使用者資料）
+        stale = sorted(
+            p.relative_to(root).as_posix() for p in root.rglob("*")
+            if p.is_file()
+            and p.relative_to(root).as_posix() not in fresh
+            and not p.relative_to(root).as_posix().startswith((USER_DATA + "/", patch.STAGING + "/",
+                                                               patch.BACKUP + "/"))
+            and p.name != MARKER and p.relative_to(root).as_posix() != MARKER
+        )
+        # 把解壓好的檔案搬進程式目錄下的暫存目錄，助手退出後由指令碼搬進定位
+        slot = root / patch.STAGING
+        if slot.exists():
+            shutil.rmtree(slot, ignore_errors=True)
+        for rel in changed:
+            dst = slot / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            (staging / rel).replace(dst)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(root / patch.STAGING, ignore_errors=True)  # 失敗不留暫存，原目錄原封不動
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return patch.launch_apply(root, changed, stale, version,
+                              relaunch=relaunch or str(root / exe), pid=pid)
+
 
 
 
@@ -348,15 +429,17 @@ def auto_update(current: str, shutdown=None, timeout: float = 8) -> dict | None:
         return None
     if not info:
         return None
+    portable = bool(info.get("portable"))
     try:
-        path = download(info)
+        path = download_portable(info) if portable else download(info)
     except Exception as e:
         log.info("自動更新下載失敗：%s", e)
         return None
     if shutdown is None:
         return {"action": "downloaded", "version": info.get("version"), "path": str(path)}
-    try:
-        shutdown()
-    finally:
+    shutdown()
+    if portable:
+        launch_portable_update(path, info.get("version") or "", pid=os.getpid())
+    else:
         launch_installer(path)
     return {"action": "installing", "version": info.get("version")}
