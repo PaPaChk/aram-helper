@@ -297,7 +297,9 @@ class AugmentDetector:
         if abs(mid - W / 2) > 0.12 * W:
             return False
         span = centers[2] - centers[0]
-        if not 0.3 * W <= span <= 0.85 * W:
+        # 卡片橫跨的寬度。UI scale 會整體縮放三張卡：實測 1.0 時約 0.38W，
+        # 0.75 時約 0.29W，因此下限必須低於 0.29W，否則小 UI 的玩家永遠校準不了。
+        if not 0.2 * W <= span <= 0.85 * W:
             return False  # 太窄或太寬都不像三張卡
         return True
 

@@ -12,6 +12,7 @@ import os
 import webbrowser
 from html import escape
 from importlib import resources
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QPixmap
@@ -165,9 +166,25 @@ class UpdateWorker(QThread):
                     log.warning("增量更新失敗：%s", e)
                     self.manual.emit("更新檔案下載失敗。", update.pan_links())
                     return
-                if not self.info.get("url") or is_portable():
+                if not self.info.get("url"):
                     self.manual.emit(reason, update.pan_links())
                     return
+                if self.info.get("portable") or is_portable():
+                    # 便攜版：下載便攜版 ZIP，交給替換指令碼在助手退出後整包疊上去。
+                    # userdata 不在 ZIP 裡，也不在替換清單裡，使用者的設定和資料都保留；
+                    # 指令碼會先備份，中途失敗全部挪回舊版本。ready 帶 ZIP 路徑，由 _install 分辨。
+                    self.phase.emit("從 GitHub 下載便攜版…")
+                    try:
+                        self.ready.emit(str(update.download(self.info, self.progress.emit)))
+                        return
+                    except update.SlowDownload as e:
+                        log.info("GitHub 便攜版 %s", e)
+                        self.manual.emit("從 GitHub 下載太慢。", update.pan_links())
+                        return
+                    except Exception as e:
+                        log.warning("便攜版下載失敗：%s", e)
+                        self.manual.emit("從 GitHub 下載便攜版失敗。", update.pan_links())
+                        return
                 self.phase.emit("從 GitHub 下載安裝包…")
                 try:
                     self.ready.emit(str(update.download(self.info, self.progress.emit)))
@@ -712,8 +729,11 @@ class MainWindow(QMainWindow):
     def _apply_patch(self, changed: list, stale: list):
         show_progress(self.update_progress, "下載完成，正在重啟助手…", 1, 1)
         root = patch.install_root()
+        # 重啟的執行檔名要和打包時一致：台服版是 AramHexTW.exe（spec 的 name="AramHexTW"）。
+        # 用錯名字會替換完檔案卻開不起來，使用者看到的是助手直接消失。
+        exe = next((root / n for n in patch.PATCHABLE_EXES if (root / n).exists()), root / "AramHexTW.exe")
         try:
-            patch.launch_apply(root, changed, stale, self._update_info["version"], relaunch=str(root / "AramHex.exe"))
+            patch.launch_apply(root, changed, stale, self._update_info["version"], relaunch=str(exe))
         except OSError as e:
             return self._update_failed(str(e))
         self.tray.quit()  # 退出讓出檔案；替換完自動重新開啟
@@ -735,6 +755,17 @@ class MainWindow(QMainWindow):
             webbrowser.open(update.DOWNLOAD_PAGE)
 
     def _install(self, path: str):
+        if path.lower().endswith(".zip"):
+            # 便攜版：解壓後由替換指令碼在助手退出後疊上新檔案，userdata 不動，完成後自動重開。
+            show_progress(self.update_progress, "下載完成，正在重啟助手…", 1, 1)
+            try:
+                root = patch.install_root() or update.program_dir()
+                update.launch_portable_update(Path(path), self._update_info["version"], root=root)
+            except Exception as e:
+                return self._update_failed(str(e))
+            self.tray.quit()
+            hard_exit_later()
+            return
         show_progress(self.update_progress, "下載完成，正在啟動安裝程式…", 1, 1)
         try:
             update.launch_installer(path)

@@ -28,18 +28,22 @@ class Resp:
         return False
 
 
-def test_pan_links_from_cloud_config(monkeypatch, tmp_path):
+def test_pan_links_never_uses_the_upstream_cloud_config(monkeypatch, tmp_path):
+    """台服版沒有網盤：上游雲控的 downloads 指向國服 123pan，一律不採用。
+
+    呼叫端拿到空字典就退回 DOWNLOAD_PAGE（本倉庫的 Releases），
+    所以即使雲控給得出連結也必須回空。"""
     from lolhex import cloud
     monkeypatch.setenv("ARAMHEX_HOME", str(tmp_path))
     monkeypatch.setattr(cloud, "_cache", None)
     monkeypatch.setattr(cloud.requests, "get", lambda url, **k: Resp({"downloads": {"setup": "https://pan/s", "portable": ""}}))
-    assert update.pan_links() == {"setup": "https://pan/s"}
+    assert update.pan_links() == {}
 
     def boom(url, **k):
         raise cloud.requests.ConnectionError("x")
     monkeypatch.setattr(cloud.requests, "get", boom)
     monkeypatch.setattr(cloud, "_cache", None)
-    assert update.pan_links() == {"setup": "https://pan/s"}  # 連不上：用上次存下的
+    assert update.pan_links() == {}
 
 
 def test_download_gives_up_when_slow(monkeypatch, tmp_path):

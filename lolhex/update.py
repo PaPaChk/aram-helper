@@ -7,7 +7,9 @@
 
 安裝包的 SHA-256 優先用 GitHub 給每個 asset 算的 digest（"sha256:..."），沒有時讀 SHA256SUMS.txt。
 下載後核對 SHA-256，不一致就刪掉並報錯。匿名介面每個 IP 每小時 60 次，啟動、再次開啟、每 30 分鐘各查一次足夠。
-便攜版不能替換自己：有新版本時只開啟下載頁。
+
+便攜版也自己更新：改為下載便攜版 ZIP、校驗雜湊、解壓到暫存目錄，再由替換指令碼在助手退出後
+把新檔案疊到程式目錄（排除 userdata，使用者資料一律保留），最後自動重新開啟。安裝版仍然下載安裝包靜默安裝。
 
 國內常常連不上 GitHub：查不到時改從 jsDelivr 讀最新版本號（取最新 tag 裡的 lolhex/__init__.py）。
 這條路拿不到安裝包和 SHA-256，所以只提示有新版本、開啟下載頁，不在程式裡直接安裝。
@@ -26,10 +28,13 @@ from pathlib import Path
 import requests
 
 from . import DOWNLOAD_PAGE, GITHUB_REPO, MIRROR, RELEASES_PAGE, WEBSITE
+from .config import program_dir
 
 log = logging.getLogger(__name__)
 API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FILE_RE = re.compile(r"^AramHex(?:TW)?-Setup-[0-9][0-9A-Za-z.+\-]*\.exe$")
+# 便攜版的整包 ZIP：更新時優先取它，下載後整包疊進程式目錄
+PORTABLE_RE = re.compile(r"^AramHex(?:TW)?-Portable-[0-9][0-9A-Za-z.+\-]*\.zip$")
 SUMS = "SHA256SUMS.txt"
 HEADERS = {"Accept": "application/vnd.github+json", "User-Agent": "aramhex"}
 VERSION_MIRRORS = [f"https://{host}/gh/{GITHUB_REPO}@latest/lolhex/__init__.py"
@@ -171,7 +176,8 @@ def _sha_from_sums(assets: list[dict], name: str, timeout: float) -> str | None:
 
 
 def check(current: str, timeout: float = 8, strict: bool = False, api: str = API,
-          mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS, site: str | None = None) -> dict | None:
+          mirrors=VERSION_MIRRORS, probe_hosts=PROBE_HOSTS, site: str | None = None,
+          portable: bool | None = None) -> dict | None:
     """有新版本返回它的資訊，沒有或查不到返回 None。
 
     台服版只認自己倉庫的 GitHub Releases：aramhex.com 的 latest.json 公布的是
@@ -192,13 +198,24 @@ def check(current: str, timeout: float = 8, strict: bool = False, api: str = API
         if rel.get("draft") or rel.get("prerelease") or not is_newer(version, current):
             return None
         assets = rel.get("assets") or []
-        setup = next((a for a in assets if FILE_RE.match(a.get("name") or "")), None)
-        if not setup:
+        # 便攜版要下載便攜版 ZIP；安裝版要下載安裝包。選錯了會把便攜版裝成安裝版。
+        want_portable = is_portable() if portable is None else bool(portable)
+        pattern = PORTABLE_RE if want_portable else FILE_RE
+        label = "便攜版" if want_portable else "安裝包"
+        asset = next((a for a in assets if pattern.match(a.get("name") or "")), None)
+        if not asset and want_portable:
+            # 便攜版不能改用安裝包：安裝程式會把程式裝進 Program Files，便攜性就沒了，
+            # 而且程式目錄裡的 userdata 也不會被帶過去。這裡只回傳下載頁資訊，讓使用者自己下載。
+            log.info("這個版本沒有便攜版 ZIP，便攜版改為手動下載")
+            return {"version": version, "file": None, "sha256": None, "size": None, "url": None,
+                    "notes": (rel.get("body") or "").strip()[:600], "page": rel.get("html_url") or RELEASES_PAGE,
+                    "portable": True, "mirror": True}
+        if not asset:
             raise ValueError("這個版本沒有安裝包")
-        digest = str(setup.get("digest") or "")
-        sha = digest[7:].lower() if digest.startswith("sha256:") else _sha_from_sums(assets, setup["name"], timeout)
+        digest = str(asset.get("digest") or "")
+        sha = digest[7:].lower() if digest.startswith("sha256:") else _sha_from_sums(assets, asset["name"], timeout)
         if not sha or not re.fullmatch(r"[0-9a-f]{64}", sha):
-            raise ValueError("這個版本的安裝包沒有 SHA-256，不能安全下載")
+            raise ValueError(f"這個版本的{label}沒有 SHA-256，不能安全下載")
     except requests.RequestException as e:  # 連不上 GitHub（或被限流）：換映象查版本號
         log.info("GitHub 查更新失敗，改查映象：%s", e)
         try:
@@ -213,9 +230,9 @@ def check(current: str, timeout: float = 8, strict: bool = False, api: str = API
         if strict:
             raise
         return None
-    return {"version": version, "file": setup["name"], "sha256": sha, "size": setup.get("size"),
-            "url": setup["browser_download_url"], "notes": (rel.get("body") or "").strip()[:600],
-            "page": rel.get("html_url") or RELEASES_PAGE}
+    return {"version": version, "file": asset["name"], "sha256": sha, "size": asset.get("size"),
+            "url": asset["browser_download_url"], "notes": (rel.get("body") or "").strip()[:600],
+            "page": rel.get("html_url") or RELEASES_PAGE, "portable": want_portable}
 
 
 def download(info: dict, progress=None, folder: Path | None = None, slow_bps: float = SLOW_BPS,
@@ -255,6 +272,63 @@ def launch_installer(path: Path) -> None:
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen([str(path), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True,
                      creationflags=flags, cwd=os.path.dirname(str(path)))
+
+
+# 便攜版整包更新時，ZIP 裡的頂層目錄（AramHexTW-<版本>/）要剝掉，直接把內容疊到程式目錄。
+def extract_portable(zip_path: Path, folder: Path | None = None) -> tuple[Path, list[str]]:
+    """解壓便攜版 ZIP 到暫存目錄，剝掉單一頂層目錄。
+
+    返回（暫存目錄, 相對路徑清單）。保持這個順序與相對路徑，替換指令碼才能逐檔疊上去。
+    只接受「所有項目都在同一個頂層目錄下」的包；否則原樣返回，避免把整包內容倒進程式目錄。"""
+    import zipfile
+    folder = Path(folder or Path(tempfile.gettempdir()) / "aramhex-update" / "portable")
+    folder.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as z:
+        names = [n for n in z.namelist() if n and not n.endswith("/")]
+        tops = {n.split("/", 1)[0] for n in names}
+        strip = len(tops) == 1 and all("/" in n for n in names)
+        prefix = (names[0].split("/", 1)[0] + "/") if strip else ""
+        rels: list[str] = []
+        for name in names:
+            rel = name[len(prefix):] if prefix and name.startswith(prefix) else name
+            if not rel or rel.startswith(("/", "\\")) or ".." in rel.split("/"):
+                continue  # ZIP slip：不寫出程式目錄以外的東西
+            dest = folder / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with z.open(name) as src, open(dest, "wb") as out:
+                while chunk := src.read(1 << 20):
+                    out.write(chunk)
+            rels.append(rel.replace("\\", "/"))
+    return folder, rels
+
+
+def launch_portable_update(zip_path: Path, version: str, root: Path | None = None,
+                           relaunch: str | None = None, pid: int | None = None) -> Path:
+    """便攜版：把下載好的 ZIP 解壓後，交給增量更新的替換指令碼在助手退出後疊上去。
+
+    userdata 不在 ZIP 裡、也不在要替換的清單裡，所以使用者的設定、資料和截圖都不會被動到；
+    替換指令碼本來就會「先備份、失敗全部挪回去」，所以中途失敗會留在舊版本。"""
+    from . import patch
+    root = Path(root or program_dir())
+    staging, rels = extract_portable(zip_path)
+    # 絕不替換使用者資料目錄
+    rels = [r for r in rels if not (r == "userdata" or r.startswith("userdata/"))]
+    # 把解壓好的檔案搬進程式目錄下的隱藏暫存目錄，換程序後由指令碼搬進定位
+    slot = root / patch.STAGING
+    if slot.exists():
+        import shutil
+        shutil.rmtree(slot, ignore_errors=True)
+    for rel in rels:
+        dst = slot / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        (staging / rel).replace(dst)
+    import shutil
+    shutil.rmtree(staging, ignore_errors=True)
+    return patch.launch_apply(root, rels, [], version, relaunch=relaunch or str(root / "AramHexTW.exe"),
+                              pid=pid)
+
+
+
 
 
 def auto_update(current: str, shutdown=None, timeout: float = 8) -> dict | None:

@@ -61,7 +61,11 @@ def sources_for(version: str) -> list[str]:
 
 SOURCES = sources_for("0")  # 只用作預設值的形狀；實際按要更新到的版本取 sources_for(version)
 # 會隨我們發版變化的檔案；其餘都是第三方庫（Qt、OpenCV、識別模型……），變了就要完整安裝包
-PATCHABLE_PREFIXES = ("AramHex.exe", "_internal/base_library.zip", "_internal/lolhex/")
+# 主程式 exe 的名字：台服版是 AramHexTW.exe（packaging/lolhex.spec 的 name="AramHexTW"），
+# 上游國服版是 AramHex.exe。兩個都要算可增量更新，否則 exe 本身永遠不會被替換，
+# 版本號更新了但跑起來還是舊的外殼。
+PATCHABLE_EXES = ("AramHexTW.exe", "AramHex.exe")
+PATCHABLE_PREFIXES = ("_internal/base_library.zip", "_internal/lolhex/")
 STAGING, BACKUP = "_update_new", "_update_old"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{1107079E-6C48-46FD-938D-04B1C3EA9A72}_is1"
 HEADERS = {"User-Agent": "aramhex"}
@@ -74,7 +78,7 @@ class NeedFullInstall(Exception):
 def is_patchable(rel: str) -> bool:
     # 第三方庫的 *.dist-info/ 是安裝記錄（RECORD 等），每次重新 pip install 內容都會變，但不影響執行；
     # 一共只有約 0.3MB，也放進增量更新，免得因為它們就要重下完整安裝包
-    return (rel == PATCHABLE_PREFIXES[0] or rel == PATCHABLE_PREFIXES[1] or rel.startswith(PATCHABLE_PREFIXES[2])
+    return (rel in PATCHABLE_EXES or rel.startswith(PATCHABLE_PREFIXES)
             or ".dist-info/" in rel)
 
 
