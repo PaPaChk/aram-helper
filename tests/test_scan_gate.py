@@ -27,7 +27,7 @@ OTHER = 9004
 @pytest.fixture
 def screen(monkeypatch):
     """可控的前臺視窗；IS_WINDOWS 當作真，但 user32 換成假的。"""
-    state = {"fg": GAME, "iconic": set()}
+    state = {"fg": GAME, "iconic": set(), "applied": []}
 
     class FakeUser32:
         @staticmethod
@@ -39,7 +39,8 @@ def screen(monkeypatch):
             return hwnd in state["iconic"]
 
         @staticmethod
-        def SetWindowDisplayAffinity(_hwnd, _aff):
+        def SetWindowDisplayAffinity(hwnd, aff):
+            state["applied"].append((hwnd, aff))
             return 1
 
     monkeypatch.setattr(win, "IS_WINDOWS", True)
@@ -48,6 +49,8 @@ def screen(monkeypatch):
     monkeypatch.setattr(win, "_overlay_windows", set())
     monkeypatch.setattr(win, "_hidden_windows", set())
     monkeypatch.setattr(win, "_own_windows", set())
+    monkeypatch.setattr(win, "_capture_allowed", False)
+    monkeypatch.setattr(win, "_scan_holds", 0)
     # client_rect 的量測留給各測試自己決定
     return state
 
@@ -76,6 +79,63 @@ def test_not_scannable_when_another_app_is_foreground(screen):
     win.add_own_window(MAIN)
     screen["fg"] = OTHER
     assert not win.scannable(GAME)
+
+
+def test_main_window_is_capturable_when_setting_allows(screen):
+    """回歸：使用者要截圖、錄影看得到助手介面，主視窗不能永遠排除在截圖外。
+
+    以前 exclude_from_capture(always=True) 直接寫死 0x11，完全不理 allow_capture 設定，
+    所以主視窗的資料頁（出裝、評級表）截圖和錄影都拍不到，只有手機拍屏看得到。"""
+    applied = screen["applied"]
+
+    win.set_capture_allowed(True)
+    win.exclude_from_capture(MAIN, always=True)
+    assert applied and applied[-1] == (MAIN, 0), f"主視窗應可截取，實際套用 {applied[-1:]}"
+
+    # 使用者關掉設定：這時候才該排除
+    win.set_capture_allowed(False)
+    assert applied[-1] == (MAIN, 0x11), f"設定關閉時應排除，實際 {applied[-1:]}"
+
+    # 再開回來
+    win.set_capture_allowed(True)
+    assert applied[-1] == (MAIN, 0), f"設定開啟時應恢復可截取，實際 {applied[-1:]}"
+
+
+def test_scan_exclusion_hides_main_window_then_restores(screen):
+    """讀螢幕期間主視窗要暫時排除（否則 OCR 讀到自己的介面），讀完立刻還原。"""
+    applied = screen["applied"]
+
+    win.set_capture_allowed(True)
+    win.exclude_from_capture(MAIN, always=True)
+    assert applied[-1] == (MAIN, 0)
+
+    with win.hold_scan_exclusion():
+        assert applied[-1] == (MAIN, 0x11), "掃描期間應暫時排除主視窗"
+        # 巢狀呼叫不該提前還原
+        with win.hold_scan_exclusion():
+            pass
+        assert applied[-1] == (MAIN, 0x11), "內層結束後仍應保持排除"
+
+    assert applied[-1] == (MAIN, 0), "掃描結束後應立刻恢復可截取"
+
+    # 浮層不受掃描影響：只有主視窗暫停顯示
+    win.exclude_from_capture(OVERLAY, always=False)
+    before = len(applied)
+    with win.hold_scan_exclusion():
+        assert all(hwnd == MAIN for hwnd, _ in applied[before:]), "掃描不應改動浮層"
+
+
+def test_scan_exclusion_keeps_window_excluded_when_setting_off(screen):
+    """設定關閉時，掃描結束不能把主視窗「還原」成可截取（那就是隱私洩漏）。"""
+    applied = screen["applied"]
+
+    win.set_capture_allowed(False)
+    win.exclude_from_capture(MAIN, always=True)
+    assert applied[-1] == (MAIN, 0x11)
+
+    with win.hold_scan_exclusion():
+        assert applied[-1] == (MAIN, 0x11)
+    assert applied[-1] == (MAIN, 0x11), "設定關閉時掃描後仍須排除，不可變成 0"
 
 
 def test_not_scannable_when_game_minimised(screen):

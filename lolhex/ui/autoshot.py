@@ -70,7 +70,7 @@ class AutoShot:
     def _open(self, rect, kind: str) -> None:
         self.engine.vision_hold_until = time.monotonic() + HOLD_S
         self._restore = win.capture_allowed()
-        win.set_capture_allowed(True)
+        win.set_capture_allowed(True)   # 自動截圖要拍到完整的助手介面（含主視窗）
         QTimer.singleShot(200, lambda: self._grab(rect, kind))  # 等視窗屬性生效
 
     def _grab(self, rect, kind: str) -> None:

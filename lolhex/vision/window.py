@@ -91,9 +91,13 @@ def is_foreground(hwnd: int) -> bool:
 
 
 _overlay_windows: set[int] = set()          # 浮層：受 allow_capture 控制
-_hidden_windows: set[int] = set()           # 永遠排除（主視窗：絕不能蓋到識別區域）
+_hidden_windows: set[int] = set()           # 主視窗：預設排除，但同樣受 allow_capture 控制
 _own_windows: set[int] = set()              # 自己的頂層窗（主視窗）：前臺是它也不算「切走了」
 _capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 除錯截圖時讓懸浮層可見
+# 掃描期間暫時排除主視窗用的計數（見 hold_scan_exclusion）。
+# 主視窗可被截取時，它一蓋到客戶區，OCR 就會讀到自己的介面而全面失敗；
+# 所以每次讀螢幕前把它暫時藏起來，讀完還原，兩者互不干擾。
+_scan_holds = 0
 
 
 def add_own_window(hwnd: int) -> None:
@@ -109,9 +113,10 @@ def add_own_window(hwnd: int) -> None:
 def foreground_is_own() -> bool:
     """前臺是不是我們自己的視窗（主視窗、浮層、貼在客戶端上的小窗）。
 
-    自己的窗要不是永遠排除截取（主視窗），就是掃描時排除（浮層），所以就算前臺是
-    它們，截遊戲客戶區拿到的仍然是遊戲的畫素（已用 mss/GDI 實測：設了
-    WDA_EXCLUDEFROMCAPTURE 的窗在前臺時，截出來仍是桌面/遊戲畫素）。"""
+    自己的窗在讀螢幕時都會被排除截取（主視窗用 hold_scan_exclusion、浮層見
+    exclude_from_capture），所以就算前臺是它們，截遊戲客戶區拿到的仍然是遊戲的畫素
+    （已用 mss/GDI 實測：設了 WDA_EXCLUDEFROMCAPTURE 的窗在前臺時，截出來仍是
+    桌面/遊戲畫素）。"""
     if not IS_WINDOWS:
         return False
     fg = int(ctypes.windll.user32.GetForegroundWindow())
@@ -145,39 +150,69 @@ def scannable(hwnd: int) -> bool:
 
 
 def exclude_from_capture(hwnd: int, always: bool = False) -> None:
-    """讓自己的窗不出現在截圖和錄屏裡（Win10 2004+）：一是避免識別到自己畫的字，
-    二是錄影片、直播時畫面乾淨。設定裡開啟"錄屏、截圖時顯示浮窗"就不排除。
+    """登記自己的窗並套用截取可見性（Win10 2004+）：避免識別到自己畫的字，
+    也讓錄影、直播、截圖時的畫面符合使用者的設定。
 
-    always=True 的窗（主視窗）不受那個設定影響：主視窗不是浮層，而且它會蓋住客戶端的
-    選人區域，一旦可被截取就會讓辨識讀到自己的介面而全面失敗。
+    always=True 的窗以前完全不顯示在截圖裡，用來保護主視窗不蓋到識別區域。
+    但使用者要的正是「截圖、錄影時看得到助手介面」，主視窗的資料頁也該拍得到，
+    所以 always 現在只代表「主視窗」，仍由 allow_capture 決定可見性；
+    蓋到識別區域的問題改由 hold_scan_exclusion() 在讀螢幕時處理。
     """
     if not hwnd:
         return
     if always:
         _hidden_windows.add(int(hwnd))
-        try:
-            ctypes.windll.user32.SetWindowDisplayAffinity(int(hwnd), 0x11)
-        except Exception:
-            pass
-        return
-    _overlay_windows.add(int(hwnd))
+    else:
+        _overlay_windows.add(int(hwnd))
     _apply_affinity(int(hwnd))
 
 
 def _apply_affinity(hwnd: int) -> None:
-    if IS_WINDOWS and hwnd:
-        try:
-            # 0x11 = WDA_EXCLUDEFROMCAPTURE；0 = 正常（能被截到）
-            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0 if _capture_allowed else 0x11)
-        except Exception:
-            pass
+    """套用目前的截取可見性；掃描期間主視窗一律先排除。"""
+    if not IS_WINDOWS or not hwnd:
+        return
+    try:
+        # 0x11 = WDA_EXCLUDEFROMCAPTURE；0 = 正常（能被截到）
+        hide = not _capture_allowed or (_scan_holds > 0 and int(hwnd) in _hidden_windows)
+        ctypes.windll.user32.SetWindowDisplayAffinity(int(hwnd), 0x11 if hide else 0)
+    except Exception:
+        pass
+
+
+class hold_scan_exclusion:
+    """讀螢幕期間暫時讓主視窗排除在截圖之外，離開時還原。
+
+    主視窗（655x743）會壓住客戶端的預選欄；它若可被截取，OCR 就會讀到自己的介面。
+    用它把「使用者要截得到」與「辨識不要讀到自己」這兩件事分開：
+
+        with win.hold_scan_exclusion():
+            img = capture.grab(rect)
+
+    使用計數支援巢狀呼叫；只有主視窗受影響，浮層不動。
+    """
+
+    def __enter__(self):
+        global _scan_holds
+        _scan_holds += 1
+        if _scan_holds == 1:
+            for hwnd in list(_hidden_windows):
+                _apply_affinity(hwnd)
+        return self
+
+    def __exit__(self, *exc):
+        global _scan_holds
+        _scan_holds = max(0, _scan_holds - 1)
+        if _scan_holds == 0:
+            for hwnd in list(_hidden_windows):
+                _apply_affinity(hwnd)
+        return False
 
 
 def set_capture_allowed(allowed: bool) -> None:
-    """錄屏、截圖時是否顯示浮窗；對已經開啟的浮窗立即生效。"""
+    """錄屏、截圖時是否顯示助手介面；對已經開啟的浮窗和主視窗立即生效。"""
     global _capture_allowed
     _capture_allowed = bool(allowed) or bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))
-    for hwnd in list(_overlay_windows):
+    for hwnd in list(_overlay_windows) + list(_hidden_windows):
         _apply_affinity(hwnd)
 
 

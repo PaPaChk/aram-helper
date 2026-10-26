@@ -384,7 +384,10 @@ class Engine:
         if not rect:
             return
         from .vision import capture
-        img = capture.grab(rect)
+        # 讀螢幕期間暫時把主視窗排除在截圖之外：主視窗可被截取後，
+        # 它若蓋住客戶區，OCR 會讀到自己的介面。讀完立刻還原，使用者截圖不受影響。
+        with win.hold_scan_exclusion():
+            img = capture.grab(rect)
         if capture.is_blank(img):
             return
         t0 = time.monotonic()
@@ -504,29 +507,31 @@ class Engine:
             self._rescan.clear()
             offer, ran = None, False
             try:
-                if det.calibrated_for(rect.width, rect.height) and not forced:
-                    if now - last_strip >= self.settings.scan_interval_ms / 1000 * self.settings.speed_factor:
-                        last_strip = now
-                        strip_rect = det.strip_rect(rect)
-                        if strip_rect is not None:  # 校準剛被 ensure_frame 丟掉時會是 None
-                            offer = det.check_strip(capture.grab(strip_rect), rect)
-                            ran = True
-                        # 一直識別不到：整塊掃描一次，防止卡片位置變了；
-                        # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
-                        confirmed = det.confirmed_for(rect.width, rect.height)
-                        every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
-                        if offer is None and not visible and now - last_full > every:
-                            last_full = now
-                            offer = det.scan_full(capture.grab(rect), (rect.left, rect.top),
-                                                  expect=(rect.width, rect.height))
-                elif forced or now - last_full >= self.settings.bootstrap_interval_s * self.settings.speed_factor:
-                    last_full = now
-                    frame = capture.grab(rect)
-                    blank = capture.is_blank(frame)
-                    self.state["vision"]["blank"] = blank
-                    offer = None if blank else det.scan_full(frame, (rect.left, rect.top),
-                                                            expect=(rect.width, rect.height))
-                    ran = True
+                # 讀螢幕期間暫時排除主視窗，免得 OCR 讀到自己的介面（見 win.hold_scan_exclusion）
+                with win.hold_scan_exclusion():
+                    if det.calibrated_for(rect.width, rect.height) and not forced:
+                        if now - last_strip >= self.settings.scan_interval_ms / 1000 * self.settings.speed_factor:
+                            last_strip = now
+                            strip_rect = det.strip_rect(rect)
+                            if strip_rect is not None:  # 校準剛被 ensure_frame 丟掉時會是 None
+                                offer = det.check_strip(capture.grab(strip_rect), rect)
+                                ran = True
+                            # 一直識別不到：整塊掃描一次，防止卡片位置變了；
+                            # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
+                            confirmed = det.confirmed_for(rect.width, rect.height)
+                            every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
+                            if offer is None and not visible and now - last_full > every:
+                                last_full = now
+                                offer = det.scan_full(capture.grab(rect), (rect.left, rect.top),
+                                                      expect=(rect.width, rect.height))
+                    elif forced or now - last_full >= self.settings.bootstrap_interval_s * self.settings.speed_factor:
+                        last_full = now
+                        frame = capture.grab(rect)
+                        blank = capture.is_blank(frame)
+                        self.state["vision"]["blank"] = blank
+                        offer = None if blank else det.scan_full(frame, (rect.left, rect.top),
+                                                                expect=(rect.width, rect.height))
+                        ran = True
             except Exception:
                 log.exception("識別異常")
             self.state["vision"].update(status="scanning", calibrated=det.confirmed_for(rect.width, rect.height))
@@ -554,7 +559,8 @@ class Engine:
             if folder.is_dir() and len(list(folder.glob("offer_*.jpg"))) >= self.SHOTS_KEEP:
                 return
             from .vision import capture
-            frame = capture.grab(rect)
+            with win.hold_scan_exclusion():
+                frame = capture.grab(rect)
         except Exception:
             log.exception("截圖失敗")
             return
