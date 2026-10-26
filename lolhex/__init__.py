@@ -1,6 +1,6 @@
 """AramHex 海克斯大亂鬥助手：螢幕識別 + 自採統計資料 + 騰訊官方資料。"""
 
-__version__ = "1.0.0+tw.10"
+__version__ = "1.0.0+tw.11"
 APP_NAME = "AramHex 臺服版"
 # 自己維護的台服版：更新來源指向本倉庫的 Releases。
 APP_UPDATES_ENABLED = True
