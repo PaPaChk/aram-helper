@@ -369,12 +369,22 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(1000)
+        # 選英雄階段自動收起主視窗：它會蓋住客戶端的預選欄與「可使用的英雄」，
+        # 蓋著就會讓頭像比對和 OCR 讀到自己的介面。獨立於 refresh（那支只看可見性），
+        # 而且使用者手動叫出來後仍可正常使用——換到別的階段就恢復正常。
+        self._cs_hidden_by_us = False
+        self._cs_user_opened = False
+        self._phase_timer = QTimer(self)
+        self._phase_timer.timeout.connect(self._auto_hide_for_champ_select)
+        self._phase_timer.start(700)
         self.refresh()
 
     def showEvent(self, e):
-        # 主視窗永遠排除在截圖之外：選英雄辨識是讀螢幕的，主視窗若蓋在客戶端上面
-        # （實測 656x743 正好壓住預選欄與「可使用的英雄」），辨識就會讀到自己的介面而全部失敗。
-        # always=True：不受「錄屏時顯示浮窗」設定影響，那設定是給浮層用的。
+        # 登記主視窗：截取可見性由 allow_capture 決定（見 win._apply_affinity），
+        # 主視窗的資料頁因此在截圖、錄影裡看得到。
+        # 以前這裡是硬性排除截取，理由是主視窗（實測 656x743）會壓住預選欄與
+        # 「可使用的英雄」，讓辨識讀到自己的介面。那個問題現在改由
+        # _auto_hide_for_champ_select 在選英雄階段自動收起主視窗來解決。
         hwnd = int(self.winId())
         win.exclude_from_capture(hwnd, always=True)
         # 同時登記成「自己的頂層窗」：前臺是主視窗時仍可掃遊戲。
@@ -917,7 +927,32 @@ class MainWindow(QMainWindow):
 
     # ---------- 視窗行為 ----------
 
+    def _auto_hide_for_champ_select(self):
+        """選英雄階段自動收起主視窗，避免蓋住客戶端造成辨識失敗。
+
+        使用者從托盤主動叫出來之後，這一輪選英雄就不再自動收起（尊重使用者操作），
+        等離開選英雄階段才把「已手動開啟」的標記清掉。離開階段時，
+        只還原「是我們自己收起來」的那種，不擅自叫醒使用者關掉的視窗。
+        """
+        in_cs = self.engine.snapshot().get("phase") == "client"
+        if in_cs:
+            # 使用者按托盤叫出來之後，這一輪選英雄就不再自動收起（尊重使用者操作）。
+            # 其他情況一律收起：主視窗蓋在客戶端上會讓頭像比對和 OCR 讀到自己的介面。
+            if self._cs_user_opened:
+                return
+            if self.isVisible():
+                self._cs_hidden_by_us = True
+                self.hide()
+            return
+        # 離開選英雄階段
+        self._cs_user_opened = False
+        if self._cs_hidden_by_us:
+            self._cs_hidden_by_us = False
+            self.show_and_raise()
+
     def show_and_raise(self):
+        self._cs_user_opened = True     # 使用者主動叫出來：這輪選英雄不要再自動收起
+        self._cs_hidden_by_us = False
         self.show()
         self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
         self.raise_()

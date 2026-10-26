@@ -50,7 +50,6 @@ def screen(monkeypatch):
     monkeypatch.setattr(win, "_hidden_windows", set())
     monkeypatch.setattr(win, "_own_windows", set())
     monkeypatch.setattr(win, "_capture_allowed", False)
-    monkeypatch.setattr(win, "_scan_holds", 0)
     # client_rect 的量測留給各測試自己決定
     return state
 
@@ -101,43 +100,6 @@ def test_main_window_is_capturable_when_setting_allows(screen):
     assert applied[-1] == (MAIN, 0), f"設定開啟時應恢復可截取，實際 {applied[-1:]}"
 
 
-def test_scan_exclusion_hides_main_window_then_restores(screen):
-    """讀螢幕期間主視窗要暫時排除（否則 OCR 讀到自己的介面），讀完立刻還原。"""
-    applied = screen["applied"]
-
-    win.set_capture_allowed(True)
-    win.exclude_from_capture(MAIN, always=True)
-    assert applied[-1] == (MAIN, 0)
-
-    with win.hold_scan_exclusion():
-        assert applied[-1] == (MAIN, 0x11), "掃描期間應暫時排除主視窗"
-        # 巢狀呼叫不該提前還原
-        with win.hold_scan_exclusion():
-            pass
-        assert applied[-1] == (MAIN, 0x11), "內層結束後仍應保持排除"
-
-    assert applied[-1] == (MAIN, 0), "掃描結束後應立刻恢復可截取"
-
-    # 浮層不受掃描影響：只有主視窗暫停顯示
-    win.exclude_from_capture(OVERLAY, always=False)
-    before = len(applied)
-    with win.hold_scan_exclusion():
-        assert all(hwnd == MAIN for hwnd, _ in applied[before:]), "掃描不應改動浮層"
-
-
-def test_scan_exclusion_keeps_window_excluded_when_setting_off(screen):
-    """設定關閉時，掃描結束不能把主視窗「還原」成可截取（那就是隱私洩漏）。"""
-    applied = screen["applied"]
-
-    win.set_capture_allowed(False)
-    win.exclude_from_capture(MAIN, always=True)
-    assert applied[-1] == (MAIN, 0x11)
-
-    with win.hold_scan_exclusion():
-        assert applied[-1] == (MAIN, 0x11)
-    assert applied[-1] == (MAIN, 0x11), "設定關閉時掃描後仍須排除，不可變成 0"
-
-
 def test_not_scannable_when_game_minimised(screen):
     win.add_own_window(MAIN)
     screen["fg"] = MAIN
@@ -147,6 +109,123 @@ def test_not_scannable_when_game_minimised(screen):
 
 def test_not_scannable_without_a_game_window(screen):
     assert not win.scannable(0)
+
+
+def _fake_mainwindow(app, monkeypatch, phase):
+    """建一個真的 MainWindow，engine.snapshot() 回報指定階段。"""
+    class FakeEngine:
+        def __init__(self):
+            self.store = SimpleNamespace(heroes={}, status=lambda: {})
+            self.icons = None
+            from lolhex.config import Settings
+            self.settings = Settings.load()
+            self.state = {"hero_id": None, "phase": phase, "offer": None, "evaluation": None,
+                          "vision": {}, "data": {}}
+
+        def snapshot(self):
+            return {"hero_id": None, "phase": phase, "offer": None, "evaluation": None,
+                    "vision": {}, "data": {}, "settings": {}}
+
+        def hero_panel(self, _hid):
+            return None
+
+        def hero_brief(self, _hid):
+            return {}
+
+        def rescan(self):
+            pass
+
+        def set_hero(self, _hid):
+            pass
+
+    from lolhex.ui import mainwindow
+    return mainwindow.MainWindow(FakeEngine(), SimpleNamespace())
+
+
+def test_mainwindow_auto_hides_during_champ_select(monkeypatch):
+    """選英雄階段自動收起主視窗：它會蓋住客戶端預選欄，讓 OCR 讀到自己的介面。
+
+    使用者回報過「主視窗根本不會遮到 augment」，所以不再靠排除截取，
+    改成選英雄階段直接不擋路。"""
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    from lolhex.ui import mainwindow
+    monkeypatch.setattr(mainwindow.win, "exclude_from_capture", lambda hwnd, always=False: None)
+    monkeypatch.setattr(mainwindow.win, "add_own_window", lambda hwnd: None)
+
+    mw = _fake_mainwindow(app, monkeypatch, "client")
+    mw.show()
+    app.processEvents()
+    assert mw.isVisible()
+
+    mw._auto_hide_for_champ_select()
+    assert not mw.isVisible(), "選英雄階段應自動收起主視窗"
+    assert mw._cs_hidden_by_us
+
+    mw.close()
+
+
+def test_mainwindow_stays_hidden_until_leaving_champ_select(monkeypatch):
+    """離開選英雄階段才還原；使用者自己叫出來後，這一輪不再自動收起。"""
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    from lolhex.ui import mainwindow
+    monkeypatch.setattr(mainwindow.win, "exclude_from_capture", lambda hwnd, always=False: None)
+    monkeypatch.setattr(mainwindow.win, "add_own_window", lambda hwnd: None)
+
+    phase = {"v": "client"}
+    mw = _fake_mainwindow(app, monkeypatch, "client")
+    mw.engine.snapshot = lambda: {"phase": phase["v"], "vision": {}, "data": {}, "settings": {}}
+    mw.show()
+    app.processEvents()
+
+    mw._auto_hide_for_champ_select()
+    assert not mw.isVisible()
+
+    # 使用者從托盤叫出來：尊重使用者，這一輪不再收起
+    mw.show_and_raise()
+    app.processEvents()
+    assert mw.isVisible()
+    mw._auto_hide_for_champ_select()
+    assert mw.isVisible(), "使用者主動叫出來後不應再被自動收起"
+
+    # 離開選英雄階段：清掉標記
+    phase["v"] = "ingame"
+    mw._auto_hide_for_champ_select()
+    assert not mw._cs_user_opened
+
+    mw.close()
+
+
+def test_mainwindow_restores_only_if_it_was_self_hidden(monkeypatch):
+    """只還原「是我們自己收起來」的視窗，不擅自叫醒使用者關掉的視窗。"""
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    from lolhex.ui import mainwindow
+    monkeypatch.setattr(mainwindow.win, "exclude_from_capture", lambda hwnd, always=False: None)
+    monkeypatch.setattr(mainwindow.win, "add_own_window", lambda hwnd: None)
+
+    phase = {"v": "client"}
+    mw = _fake_mainwindow(app, monkeypatch, "client")
+    mw.engine.snapshot = lambda: {"phase": phase["v"], "vision": {}, "data": {}, "settings": {}}
+    mw.show()
+    app.processEvents()
+
+    # 使用者自己關掉（不是我們收的）：離開階段不該擅自重新 show
+    mw.close()
+    app.processEvents()
+    assert not mw.isVisible()
+    assert not mw._cs_hidden_by_us
+
+    phase["v"] = "ingame"
+    mw._auto_hide_for_champ_select()
+    assert not mw.isVisible(), "使用者自己關的視窗不該被自動叫醒"
 
 
 def test_mainwindow_show_registers_itself(monkeypatch):
