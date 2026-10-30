@@ -38,6 +38,12 @@ VIEWS = (
     (0.62, 0.0, 0.0),
     (0.55, 0.0, 0.10),
 )
+# 客戶端頭像格有時比頭像本身還貼：框住的範圍剛好是頭像、四周沒有留邊，
+# 於是特徵和頭像庫（官網圖有留邊）對不上。實測薇古絲 Vex 在 1920x1080 基準下
+# 拿到 72x72 的格子時只有 0.583、正確答案排 19 名，看起來就像「認不出」。
+# 先補一圈暗邊再取特徵就能修好（0.813）。空格、深色空格補邊後最高只到 0.47/0.55，
+# 不會被誤認，所以可以安全地一併嘗試。
+PADS = (0.12, 0.16)
 # 實機截圖（取各倍數最好的一個）：真頭像 0.79–0.98、領先第二名 0.15 以上；
 # 空位、重新整理動畫中的暗頭像最高約 0.68，幾乎不領先
 MIN_SCORE = 0.75   # 低於它就當作不是頭像（空位、問號、鎖定圖示、別的介面圖片）
@@ -79,6 +85,40 @@ def _feature(img: np.ndarray, inner: float = 0.84,
     return v / n
 
 
+def _pad_variants(img: np.ndarray, frac: float, dark: float = 0.20) -> list[np.ndarray]:
+    """把截圖小塊先補一圈暗邊再取特徵：模擬「識別框比頭像本身大」。
+
+    客戶端頭像格在不同解析度／縮放下，實際框住的範圍會比頭像稍大或稍小。
+    框太貼（頭像填滿整個截圖）時，特徵會失真：實測薇古絲 Vex 的 72x72 框只有
+    0.583（正確答案排名 19），補 12% 暗邊後升到 0.813 並認對。
+    暗邊用乘上 dark 的鏡像內容，避免整塊純色把特徵向量拉偏。"""
+    if frac <= 0:
+        return []
+    h, w = img.shape[:2]
+    m = max(1, int(round(min(h, w) * frac)))
+    out = cv2.copyMakeBorder(img, m, m, m, m, cv2.BORDER_REPLICATE).astype(np.float32)
+    out[:m] *= dark
+    out[-m:] *= dark
+    out[:, :m] *= dark
+    out[:, -m:] *= dark
+    padded = out.astype(np.uint8)
+    ph, pw = padded.shape[:2]
+    res = []
+    for sc in SCALES:
+        s = min(ph, pw) * 0.84 / sc
+        for dy in SHIFTS:
+            for dx in SHIFTS:
+                cx, cy = pw / 2 + dx * pw, ph / 2 + dy * ph
+                x0, y0 = int(round(cx - s / 2)), int(round(cy - s / 2))
+                x1, y1 = x0 + int(round(s)), y0 + int(round(s))
+                if x0 < 0 or y0 < 0 or x1 > pw or y1 > ph:
+                    continue
+                f = _feature(padded[y0:y1, x0:x1], inner=1.0)
+                if f is not None:
+                    res.append(f)
+    return res
+
+
 def _variants(img: np.ndarray) -> list[np.ndarray]:
     h, w = img.shape[:2]
     out = []
@@ -94,6 +134,8 @@ def _variants(img: np.ndarray) -> list[np.ndarray]:
                 f = _feature(img[y0:y1, x0:x1], inner=1.0)
                 if f is not None:
                     out.append(f)
+    for frac in PADS:
+        out.extend(_pad_variants(img, frac))
     return out
 
 

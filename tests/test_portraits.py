@@ -291,9 +291,34 @@ def test_icon_view_with_face_zoom_and_offset():
         assert m.hero_id == hid, f"英雄 {hid} 的放大偏下取景認不出來（得到 {m.hero_id}）"
 
 
+def test_tightly_cropped_portrait_still_matches():
+    """回歸：薇古絲（Vex）的格子被裁得「太貼」時曾經認不出來。
+
+    客戶端在 1920x1080 基準給的是 72x72 的格子，頭像剛好填滿、四周幾乎沒有留邊；
+    官網頭像則有留邊。特徵因此對不上：實測正確答案只有 0.583、排 19 名，
+    使用者看到的就是「無法識別」。補一圈暗邊再取特徵（PADS）就能修好（0.813）。
+    這裡用合成圖驗證「頭像填滿整個格子」的情況仍能認對。"""
+    icons = _icons()
+    bank = IconBank(icons)
+    for hid, img in icons.items():
+        # 把整張官網圖塞滿格子：等於客户端的框比頭像還貼
+        tight = cv2.resize(img, (72, 72), interpolation=cv2.INTER_AREA)
+        m = bank.classify(tight)
+        assert m.hero_id == hid, f"英雄 {hid} 在「頭像填滿格子」的取景下認不出來（得到 {m.hero_id}）"
+
+
+def test_padded_variants_do_not_match_blank_slots():
+    """補邊變體不能讓空格、深色空格被誤認成英雄。"""
+    from lolhex.vision.portraits import PADS
+    assert PADS, "PADS 應該是開啟的（修薇古絲用的）"
+    bank = IconBank(_icons())
+    for value in (0, 12, 18, 24, 30, 40, 55, 70):
+        flat = np.full((72, 72, 3), value, np.uint8)
+        m = bank.classify(flat)
+        assert m.hero_id is None, f"純色 {value} 被誤認成 {m.hero_id}"
+
+
 def test_occupied_slot_with_unknown_champion_is_reported(monkeypatch):
-    """有頭像但認不出來時，要回報成 unknown（畫面上標「無法識別」），
-    真的空格子則完全不回報。不要讓使用者看到一格空白卻不知道是壞了還是沒英雄。"""
     frame = np.full((1080, 1920, 3), 22, np.uint8)
     layout = {"bench": [], "team": []}
     # 一格有頭像（彩色、有明暗變化）但不在圖標庫裡 → 認不出
