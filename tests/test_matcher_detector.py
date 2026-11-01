@@ -110,3 +110,27 @@ def test_no_guessed_calibration_is_loaded_from_disk(tmp_path):
     det.ensure_calibration(1920, 1080)
     assert det.calibration is None
     assert not det.confirmed_for(1920, 1080)
+
+
+def test_same_name_prefers_the_id_that_has_stats():
+    """回歸：頭像庫同時有正常英雄（11 易大師）與特殊模式別名（60011 Jade_MasterYi），
+    兩者名字一樣。以前同名只按 id 長度排序，60011 這種長 id 永遠勝出——而它沒有
+    勝率統計，於是隊友那一列的英雄評級一律顯示「—」，看起來像識別失敗。
+
+    preferred 放有統計的 id，這裡確認同名時會選回正常英雄。"""
+    names = {
+        "11": ["易大師", "MasterYi"],
+        "60011": ["易大師", "MasterYi"],
+        "60011#nick": ["無極劍聖", "无极剑圣"],
+        "60011#full": ["無極劍聖 易大師", "无极剑圣 易大师"],
+        "11#nick": ["無極劍聖", "无极剑圣"],
+        "11#full": ["無極劍聖 易大師", "无极剑圣 易大师"],
+    }
+    # 沒有 preferred：舊行為（長 id 勝出）
+    plain = NameMatcher(names, 86.0)
+    assert plain.match("易大師")[0] == "60011"
+
+    # 有 preferred（11 有勝率統計）：要選回 11
+    with_stats = NameMatcher(names, 86.0, preferred={"11"})
+    assert with_stats.match("易大師")[0] == "11"
+    assert with_stats.match("無極劍聖 易大師")[0].split("#")[0] == "11"

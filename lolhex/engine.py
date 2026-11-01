@@ -259,7 +259,11 @@ class Engine:
             names[hid + "#nick"] = [h.get("nick"), h.get("nick_cn")]
             names[hid + "#full"] = [f"{h.get('nick', '')} {h.get('name', '')}",
                                     f"{h.get('nick_cn', '')} {h.get('name_cn', '')}"]
-        return NameMatcher(names, 86.0)
+        # 優先選「有勝率統計」的 id：頭像庫同時有正常英雄（11 易大師）與特殊模式別名
+        # （60011 Jade_MasterYi，名字一樣），後者沒有統計。以前同名只按 id 長度決勝，
+        # 60011 永遠贏，隊友的英雄評級就全部變成「—」——名字對、卻查不到勝率。
+        known = {str(k) for k in (self.store.ranks.get("heroes") or {})}
+        return NameMatcher(names, 86.0, preferred=known)
 
     def _load_icons(self, download: bool = True) -> None:
         """建立英雄頭像庫。下載是慢的（173 張），下載期間不要用不完整的頭像庫去比對：
@@ -384,7 +388,9 @@ class Engine:
         if not rect:
             return
         from .vision import capture
-        img = capture.grab(rect)
+        # 讀螢幕期間排除浮層：選人標註的評級文字也會被 OCR 讀到，污染英雄名識別。
+        with win.hold_scan_exclusion():
+            img = capture.grab(rect)
         if capture.is_blank(img):
             return
         t0 = time.monotonic()
@@ -504,29 +510,32 @@ class Engine:
             self._rescan.clear()
             offer, ran = None, False
             try:
-                if det.calibrated_for(rect.width, rect.height) and not forced:
-                    if now - last_strip >= self.settings.scan_interval_ms / 1000 * self.settings.speed_factor:
-                        last_strip = now
-                        strip_rect = det.strip_rect(rect)
-                        if strip_rect is not None:  # 校準剛被 ensure_frame 丟掉時會是 None
-                            offer = det.check_strip(capture.grab(strip_rect), rect)
-                            ran = True
-                        # 一直識別不到：整塊掃描一次，防止卡片位置變了；
-                        # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
-                        confirmed = det.confirmed_for(rect.width, rect.height)
-                        every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
-                        if offer is None and not visible and now - last_full > every:
-                            last_full = now
-                            offer = det.scan_full(capture.grab(rect), (rect.left, rect.top),
-                                                  expect=(rect.width, rect.height))
-                elif forced or now - last_full >= self.settings.bootstrap_interval_s * self.settings.speed_factor:
-                    last_full = now
-                    frame = capture.grab(rect)
-                    blank = capture.is_blank(frame)
-                    self.state["vision"]["blank"] = blank
-                    offer = None if blank else det.scan_full(frame, (rect.left, rect.top),
-                                                            expect=(rect.width, rect.height))
-                    ran = True
+                # 讀螢幕期間暫時排除浮層：它畫在卡片上方的字（例如「未知」）
+                # 會被 OCR 當成 augment 名稱讀走，於是永遠認不出來。
+                with win.hold_scan_exclusion():
+                    if det.calibrated_for(rect.width, rect.height) and not forced:
+                        if now - last_strip >= self.settings.scan_interval_ms / 1000 * self.settings.speed_factor:
+                            last_strip = now
+                            strip_rect = det.strip_rect(rect)
+                            if strip_rect is not None:  # 校準剛被 ensure_frame 丟掉時會是 None
+                                offer = det.check_strip(capture.grab(strip_rect), rect)
+                                ran = True
+                            # 一直識別不到：整塊掃描一次，防止卡片位置變了；
+                            # 還在用預設位置時照常按 bootstrap 間隔掃，本機校準過就 30 秒一次
+                            confirmed = det.confirmed_for(rect.width, rect.height)
+                            every = 30 if confirmed else self.settings.bootstrap_interval_s * self.settings.speed_factor
+                            if offer is None and not visible and now - last_full > every:
+                                last_full = now
+                                offer = det.scan_full(capture.grab(rect), (rect.left, rect.top),
+                                                      expect=(rect.width, rect.height))
+                    elif forced or now - last_full >= self.settings.bootstrap_interval_s * self.settings.speed_factor:
+                        last_full = now
+                        frame = capture.grab(rect)
+                        blank = capture.is_blank(frame)
+                        self.state["vision"]["blank"] = blank
+                        offer = None if blank else det.scan_full(frame, (rect.left, rect.top),
+                                                                expect=(rect.width, rect.height))
+                        ran = True
             except Exception:
                 log.exception("識別異常")
             self.state["vision"].update(status="scanning", calibrated=det.confirmed_for(rect.width, rect.height))
@@ -554,7 +563,8 @@ class Engine:
             if folder.is_dir() and len(list(folder.glob("offer_*.jpg"))) >= self.SHOTS_KEEP:
                 return
             from .vision import capture
-            frame = capture.grab(rect)
+            with win.hold_scan_exclusion():
+                frame = capture.grab(rect)
         except Exception:
             log.exception("截圖失敗")
             return

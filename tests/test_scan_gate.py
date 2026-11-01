@@ -273,3 +273,22 @@ def test_mainwindow_show_registers_itself(monkeypatch):
     assert registered and registered[-1] == hwnd   # 不是 0、也不是別人的 hwnd
     assert excluded and excluded[-1] == (hwnd, True)
     mw.close()
+
+
+def test_scan_exclusion_hides_overlays_but_not_main_window(screen):
+    """回歸：浮層在 allow_capture=True 時是可截取的（使用者要截圖看得到），
+    但識別期間必須暫時排除——它畫在卡片上方的「未知」等字會被 OCR 當成
+    augment 名稱讀走，於是永遠認不出海克斯，一直顯示未知。"""
+    applied = screen["applied"]
+
+    win.set_capture_allowed(True)
+    win.exclude_from_capture(OVERLAY, always=False)     # 浮層
+    win.exclude_from_capture(MAIN, always=True)         # 主視窗
+    assert applied[-2:] == [(OVERLAY, 0), (MAIN, 0)], "設定開啟時兩者都該可截取"
+
+    with win.hold_scan_exclusion():
+        assert applied[-1] == (OVERLAY, 0x11), "識別期間浮層必須排除"
+        assert not any(h == MAIN and a == 0x11 for h, a in applied), \
+            "識別期間不該把主視窗也排除（它只受 allow_capture 控制）"
+
+    assert applied[-1] == (OVERLAY, 0), "識別結束後浮層要恢復可截取"

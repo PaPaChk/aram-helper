@@ -50,10 +50,17 @@ class NameMatcher:
             self._ids.append(best[k][1])
 
     def _rank(self, i: str) -> tuple:
-        """越小越優先：評分層認得的 id > 較長的 id（騰訊 1000+n）> 字串本身（穩定）。"""
-        sid = str(i)
-        return (0 if sid in self._preferred else 1, -len(sid), sid)
+        """越小越優先：有統計資料的 id > 其他；再比 id 長度（騰訊 1000+n）與字串本身。
 
+        客戶端頭像庫同時存在「正常英雄」（id 11 易大師）與特殊模式別名
+        （id 60011 = Jade_MasterYi，名字一樣也叫易大師）。兩者同名，以前只按 id 長度
+        排序，於是 60011 這種長 id 永遠勝出——而它沒有勝率統計，英雄評級就一律是
+        「—」，看起來像辨識失敗。preferred 放的是有統計的 id，這裡優先選它們。
+
+        key 可能帶後綴（`11#nick`、`11#full` 是「稱號 名字」的組合鍵），
+        後綴不改變屬於哪個英雄，所以要比對前先切掉。"""
+        sid = str(i).split("#")[0]
+        return (0 if sid in self._preferred else 1, -len(sid), str(i))
     def __len__(self) -> int:
         return len(self._keys)
 

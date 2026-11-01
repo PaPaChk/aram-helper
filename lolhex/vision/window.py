@@ -94,6 +94,9 @@ _overlay_windows: set[int] = set()          # 浮層：受 allow_capture 控制
 _hidden_windows: set[int] = set()           # 主視窗：同樣受 allow_capture 控制
 _own_windows: set[int] = set()              # 自己的頂層窗（主視窗）：前臺是它也不算「切走了」
 _capture_allowed = bool(os.environ.get("LOLHEX_DEBUG_CAPTURABLE"))  # 除錯截圖時讓懸浮層可見
+# 識別期間暫時排除浮層用的計數（見 hold_scan_exclusion）。
+# 浮層文字會落進 OCR 讀取範圍，被當成 augment 名稱讀走，造成「永遠未知」。
+_scan_holds = 0
 
 
 def add_own_window(hwnd: int) -> None:
@@ -168,9 +171,41 @@ def _apply_affinity(hwnd: int) -> None:
         return
     try:
         # 0x11 = WDA_EXCLUDEFROMCAPTURE；0 = 正常（能被截到）
-        ctypes.windll.user32.SetWindowDisplayAffinity(int(hwnd), 0 if _capture_allowed else 0x11)
+        # 識別期間（_scan_holds>0）浮層一律排除：浮層畫在卡片上方的「未知」等字
+        # 會被下一次 OCR 讀到，於是永遠認不出海克斯——自己污染自己。
+        hide = not _capture_allowed or (_scan_holds > 0 and int(hwnd) in _overlay_windows)
+        ctypes.windll.user32.SetWindowDisplayAffinity(int(hwnd), 0x11 if hide else 0)
     except Exception:
         pass
+
+
+class hold_scan_exclusion:
+    """識別期間暫時把浮層排除在截取之外，離開時還原。
+
+    浮層（卡片上方的評語、右上角面板）在 allow_capture=True 時是可截取的，
+    方便使用者截圖／錄影。但它同時會落進 OCR 的讀取範圍：實測卡片上方那行
+    「未知」被讀成 augment 名稱，於是永遠匹配失敗、一直顯示未知。
+    讀螢幕期間暫時排除，就同時滿足「截圖拍得到」與「識別不讀到自己」。
+
+        with win.hold_scan_exclusion():
+            img = capture.grab(rect)
+    """
+
+    def __enter__(self):
+        global _scan_holds
+        _scan_holds += 1
+        if _scan_holds == 1:
+            for hwnd in list(_overlay_windows):
+                _apply_affinity(hwnd)
+        return self
+
+    def __exit__(self, *exc):
+        global _scan_holds
+        _scan_holds = max(0, _scan_holds - 1)
+        if _scan_holds == 0:
+            for hwnd in list(_overlay_windows):
+                _apply_affinity(hwnd)
+        return False
 
 
 def set_capture_allowed(allowed: bool) -> None:
