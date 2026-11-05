@@ -89,21 +89,29 @@ def test_hover_resets_timer(panel):
     assert not p.expanded
 
 
-def test_champ_select_auto_open_waits_for_hover(panel):
+def test_champ_select_does_not_auto_open(panel):
+    """回歸：選英雄階段不再自動展開面板。
+
+    以前識別到英雄就自動彈出；那塊面板會蓋住客戶端右半邊的解說與佈局，
+    很妨礙選人。使用者要自己點右上角按鈕才開。"""
+    p = panel.p
+    assert not p.expanded
+    p.update_from({"hero_id": "1", "phase": "client"})
+    assert not p.expanded, "選英雄階段不該自動展開"
+    p.update_from({"hero_id": "2", "phase": "client"})
+    assert not p.expanded, "換英雄也不該自動展開"
+
+
+def test_manual_open_still_works_during_champ_select(panel):
+    """不自動彈出，但手動點按鈕照樣要開，而且要顯示勝率等資訊。"""
     p = panel.p
     p.update_from({"hero_id": "1", "phase": "client"})
-    assert p.expanded and p._auto_opened
-    for _ in range(3):
-        _wait(panel, panel.overlay.AUTO_HIDE_SECONDS)
-        p.auto_hide("client")
-    assert p.expanded                  # 沒碰過就一直開著，方便看勝率
-    panel.cursor[0] = p.frameGeometry().center()
-    p.auto_hide("client")
-    panel.cursor[0] = QPoint(-500, -500)
-    p.auto_hide("client")
-    _wait(panel, panel.overlay.AUTO_HIDE_SECONDS)
-    p.auto_hide("client")
     assert not p.expanded
+    p.btn.click()
+    panel.app.processEvents()
+    assert p.expanded, "手動點按鈕要能展開"
+    p.update_from({"hero_id": "1", "phase": "client"})
+    assert p.expanded, "展開後更新資料不該把它收起來"
 
 
 def test_champ_select_auto_open_hides_in_game(panel):

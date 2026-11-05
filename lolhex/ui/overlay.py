@@ -404,9 +404,6 @@ class ControlPanel(QWidget):
         self.expanded = False
         self.target_hwnd = 0      # 遊戲視窗（進遊戲後）或客戶端視窗，點完浮窗把焦點還給它
         self._away_since = None   # 展開後滑鼠離開浮窗的時刻
-        self._hovered = False     # 這次展開後滑鼠是否進過浮窗
-        self._auto_opened = False
-        self._auto_opened_for = None
         self._names = {}
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -499,7 +496,7 @@ class ControlPanel(QWidget):
     def toggle(self):
         self.expanded = not self.expanded
         self.body.setVisible(self.expanded)
-        self._away_since, self._hovered, self._auto_opened = None, False, False
+        self._away_since = None
         self.adjustSize()
 
     def _fold(self, key: str, on: bool) -> None:
@@ -553,13 +550,13 @@ class ControlPanel(QWidget):
         return self.search.hasFocus() and self.isActiveWindow()
 
     def auto_hide(self, phase) -> None:
-        """展開後滑鼠離開一段時間就收起。選英雄階段自動展開的，滑鼠進來過或進了遊戲才開始計時。"""
+        """展開後滑鼠離開一段時間就收起。游標在面板上或正在打字時不計時。"""
         if not self.expanded or not self.isVisible():
             return
         if self.frameGeometry().contains(QCursor.pos()):
-            self._hovered, self._away_since = True, None
+            self._away_since = None
             return
-        if self._typing() or (self._auto_opened and not self._hovered and phase == "client"):
+        if self._typing():
             self._away_since = None
             return
         now = time.monotonic()
@@ -638,15 +635,11 @@ class ControlPanel(QWidget):
         self.cands.addStretch(1)
 
     def update_from(self, snap: dict) -> None:
-        # 選英雄階段識別到新英雄時自動展開一次，方便看勝率、出裝、加點
-        hid = snap.get("hero_id")
-        if hid and snap.get("phase") == "client" and self._auto_opened_for != hid:
-            self._auto_opened_for = hid
-            if not self.expanded:
-                self.toggle()
-                self._auto_opened = True
+        # 選英雄階段不再自動展開：這塊面板會蓋住客戶端右半邊的解說與佈局，
+        # 使用者要自己點右上角按鈕才開。以前識別到英雄就自動彈出，很妨礙選人。
         if not self.expanded:
             return
+        hid = snap.get("hero_id")
         self._ensure_completer()
         show_win = snap.get("settings", {}).get("show_winrate", True)
         h = snap.get("hero")
